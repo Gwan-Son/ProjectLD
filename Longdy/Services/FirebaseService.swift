@@ -130,9 +130,9 @@ final class FirebaseService {
             }
     }
 
-    func saveCheckIn(coupleId: String, userId: String, mood: Mood, fatigue: Int, missLevel: Int, status: LongdyStatus, canCall: CallIntent, note: String) async throws {
+    func saveCheckIn(coupleId: String, userId: String, mood: Mood, fatigue: Int, missLevel: Int, status: LongdyStatus, canCall: CallIntent, note: String, expiresAt: Date?) async throws {
         let ref = db.collection("couples").document(coupleId).collection("checkIns").document()
-        try await ref.setData([
+        var data: [String: Any] = [
             "userId": userId,
             "mood": mood.rawValue,
             "fatigue": fatigue,
@@ -141,7 +141,11 @@ final class FirebaseService {
             "canCall": canCall.rawValue,
             "note": note,
             "createdAt": Timestamp(date: Date())
-        ])
+        ]
+        if let expiresAt {
+            data["expiresAt"] = Timestamp(date: expiresAt)
+        }
+        try await ref.setData(data)
     }
 
     func listenToCheckIns(coupleId: String, handler: @escaping ([CheckIn]) -> Void) -> ListenerRegistration {
@@ -213,19 +217,61 @@ final class FirebaseService {
             }
     }
 
-    func saveQuestionAnswer(coupleId: String, dateKey: String, question: String, userId: String, answer: String) async throws {
-        let ref = db.collection("couples").document(coupleId).collection("questionAnswers").document(dateKey)
-        try await ref.setData([
-            "question": question,
-            "answersByUserId.\(userId)": answer,
+    func saveCareItem(
+        coupleId: String,
+        dateKey: String,
+        userId: String,
+        title: String,
+        iconName: String,
+        repeatRule: CareRepeatRule,
+        reminderHour: Int?,
+        reminderMinute: Int?,
+        note: String
+    ) async throws -> String {
+        let ref = db.collection("couples").document(coupleId).collection("careItems").document()
+        var data: [String: Any] = [
+            "dateKey": dateKey,
+            "userId": userId,
+            "title": title,
+            "iconName": iconName,
+            "repeatRule": repeatRule.rawValue,
+            "note": note,
+            "doneDateKeys": [],
             "createdAt": Timestamp(date: Date())
-        ], merge: true)
+        ]
+        if let reminderHour, let reminderMinute {
+            data["reminderHour"] = reminderHour
+            data["reminderMinute"] = reminderMinute
+        }
+        try await ref.setData(data)
+        return ref.documentID
     }
 
-    func listenToQuestionAnswer(coupleId: String, dateKey: String, handler: @escaping (QuestionAnswer?) -> Void) -> ListenerRegistration {
-        db.collection("couples").document(coupleId).collection("questionAnswers").document(dateKey)
+    func updateCareItem(coupleId: String, itemId: String, dateKey: String, isDone: Bool) async throws {
+        let ref = db.collection("couples").document(coupleId).collection("careItems").document(itemId)
+        if isDone {
+            try await ref.setData(["doneDateKeys": FieldValue.arrayUnion([dateKey])], merge: true)
+        } else {
+            try await ref.setData(["doneDateKeys": FieldValue.arrayRemove([dateKey])], merge: true)
+        }
+    }
+
+    func deleteCareItem(coupleId: String, itemId: String) async throws {
+        try await db.collection("couples").document(coupleId).collection("careItems").document(itemId).delete()
+    }
+
+    func listenToCareItems(coupleId: String, dateKey: String, handler: @escaping ([CareItem]) -> Void) -> ListenerRegistration {
+        db.collection("couples").document(coupleId).collection("careItems")
+            .limit(to: 200)
             .addSnapshotListener { snapshot, _ in
-                handler(snapshot.flatMap { Self.decodeQuestionAnswer(id: dateKey, data: $0.data()) })
+                let today = Date()
+                let items = snapshot?.documents
+                    .compactMap { Self.decodeCareItem(id: $0.documentID, data: $0.data()) }
+                    .filter { item in
+                        item.dateKey == dateKey || item.repeatRule.applies(to: today, createdAt: item.createdAt)
+                    }
+                    .sorted { $0.createdAt < $1.createdAt } ?? []
+                handler(items)
             }
     }
 
@@ -291,7 +337,8 @@ final class FirebaseService {
             status: LongdyStatus(rawValue: data["status"] as? String ?? "") ?? .resting,
             canCall: CallIntent(rawValue: data["canCall"] as? String ?? "") ?? .later,
             note: data["note"] as? String ?? "",
-            createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+            createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date(),
+            expiresAt: (data["expiresAt"] as? Timestamp)?.dateValue()
         )
     }
 
@@ -310,9 +357,22 @@ final class FirebaseService {
         return CoupleEvent(id: id, ownerUserId: ownerUserId, title: title, startAt: startAt, endAt: endAt, type: EventType(rawValue: data["type"] as? String ?? "") ?? .mine, memo: data["memo"] as? String ?? "")
     }
 
-    static func decodeQuestionAnswer(id: String, data: [String: Any]?) -> QuestionAnswer? {
-        guard let data else { return nil }
-        return QuestionAnswer(id: id, question: data["question"] as? String ?? QuestionBank.question(), answersByUserId: data["answersByUserId"] as? [String: String] ?? [:], createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date())
+    static func decodeCareItem(id: String, data: [String: Any]) -> CareItem? {
+        guard let userId = data["userId"] as? String else { return nil }
+        let legacyCategory = CareCategoryFallback(rawValue: data["category"] as? String ?? "")
+        return CareItem(
+            id: id,
+            userId: userId,
+            dateKey: data["dateKey"] as? String ?? DateKey.dateKey(),
+            title: data["title"] as? String ?? legacyCategory.title,
+            iconName: data["iconName"] as? String ?? legacyCategory.iconName,
+            repeatRule: CareRepeatRule(rawValue: data["repeatRule"] as? String ?? "") ?? .once,
+            reminderHour: data["reminderHour"] as? Int,
+            reminderMinute: data["reminderMinute"] as? Int,
+            note: data["note"] as? String ?? "",
+            doneDateKeys: data["doneDateKeys"] as? [String] ?? ((data["isDone"] as? Bool) == true ? [data["dateKey"] as? String ?? DateKey.dateKey()] : []),
+            createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        )
     }
 
     static func decodeMemory(id: String, data: [String: Any]) -> MemoryNote? {
