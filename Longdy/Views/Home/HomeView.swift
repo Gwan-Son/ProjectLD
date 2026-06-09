@@ -2,7 +2,10 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppViewModel
+    @StateObject private var moodEditor = CheckInViewModel()
     @State private var showingSettings = false
+    @State private var showingMoodEditor = false
+    @State private var isSavingMood = false
 
     var body: some View {
         NavigationStack {
@@ -40,6 +43,13 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showingMoodEditor) {
+                MoodEditorSheet(
+                    viewModel: moodEditor,
+                    isSaving: isSavingMood,
+                    onSave: saveMood
+                )
             }
         }
     }
@@ -210,7 +220,7 @@ struct HomeView: View {
                 Text(label)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(HomePalette.ink)
-                Text(checkIn.map { "\($0.status.rawValue) · \($0.mood.rawValue)" } ?? fallback)
+                Text(checkIn.map { "\($0.mood.rawValue) · \($0.status.rawValue)" } ?? fallback)
                     .font(.system(size: 15))
                     .foregroundStyle(HomePalette.muted)
             }
@@ -219,9 +229,26 @@ struct HomeView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(isPartner ? HomePalette.primary : HomePalette.muted)
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isPartner else { return }
+            moodEditor.load(from: appState.myLatestCheckIn)
+            showingMoodEditor = true
+        }
         .padding(12)
         .background((isPartner ? HomePalette.hero : HomePalette.tertiary).opacity(0.13))
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+
+    private func saveMood() {
+        isSavingMood = true
+        Task {
+            await moodEditor.saveCheckIn(userId: appState.userId, coupleId: appState.coupleId)
+            isSavingMood = false
+            if moodEditor.errorMessage == nil {
+                showingMoodEditor = false
+            }
+        }
     }
 
     private var recentMoments: some View {
@@ -420,6 +447,107 @@ private enum HomePalette {
     static let tertiary = Color(red: 0.80, green: 0.67, blue: 0.55)
     static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
     static let muted = Color(red: 0.33, green: 0.26, blue: 0.25)
+}
+
+struct MoodEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var viewModel: CheckInViewModel
+    let isSaving: Bool
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("기분 공유 수정")
+                            .font(.system(size: 28, weight: .bold, design: .serif))
+                            .foregroundStyle(HomePalette.primary)
+                        Text("마음과 상태를 고르고, 얼마나 오래 보여둘지 정해요.")
+                            .font(.callout)
+                            .foregroundStyle(HomePalette.muted)
+                    }
+
+                    editorCard {
+                        pickerRow("마음", selection: $viewModel.mood, values: Mood.allCases)
+                        Divider().opacity(0.35)
+                        pickerRow("상태", selection: $viewModel.status, values: LongdyStatus.allCases)
+                        Divider().opacity(0.35)
+                        Picker("유지 시간", selection: $viewModel.duration) {
+                            ForEach(MoodShareDuration.allCases) { duration in
+                                Text(duration.title).tag(duration)
+                            }
+                        }
+                        .font(.body)
+                        .foregroundStyle(HomePalette.ink)
+                        .tint(HomePalette.primary)
+                    }
+
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.red)
+                    }
+
+                    Button(action: onSave) {
+                        HStack {
+                            if isSaving {
+                                ProgressView()
+                                    .tint(.white)
+                            }
+                            Text(isSaving ? "저장 중" : "기분 공유 저장")
+                        }
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(HomePalette.primary.opacity(isSaving ? 0.65 : 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .disabled(isSaving)
+                }
+                .padding(20)
+            }
+            .background(HomePalette.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("닫기") {
+                        dismiss()
+                    }
+                    .foregroundStyle(HomePalette.primary)
+                }
+            }
+        }
+    }
+
+    private func editorCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            content()
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(HomePalette.surface.opacity(0.82))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.72), lineWidth: 1)
+        }
+    }
+
+    private func pickerRow<Value: RawRepresentable & Hashable & Identifiable>(
+        _ title: String,
+        selection: Binding<Value>,
+        values: [Value]
+    ) -> some View where Value.RawValue == String {
+        Picker(title, selection: selection) {
+            ForEach(values) { value in
+                Text(value.rawValue).tag(value)
+            }
+        }
+        .font(.body)
+        .foregroundStyle(HomePalette.ink)
+        .tint(HomePalette.primary)
+    }
 }
 
 struct SettingsView: View {
