@@ -235,7 +235,9 @@ final class FirebaseService {
             "title": title,
             "iconName": iconName,
             "repeatRule": repeatRule.rawValue,
+            "category": title,
             "note": note,
+            "isDone": false,
             "doneDateKeys": [],
             "createdAt": Timestamp(date: Date())
         ]
@@ -250,9 +252,15 @@ final class FirebaseService {
     func updateCareItem(coupleId: String, itemId: String, dateKey: String, isDone: Bool) async throws {
         let ref = db.collection("couples").document(coupleId).collection("careItems").document(itemId)
         if isDone {
-            try await ref.setData(["doneDateKeys": FieldValue.arrayUnion([dateKey])], merge: true)
+            try await ref.setData([
+                "doneDateKeys": FieldValue.arrayUnion([dateKey]),
+                "isDone": true
+            ], merge: true)
         } else {
-            try await ref.setData(["doneDateKeys": FieldValue.arrayRemove([dateKey])], merge: true)
+            try await ref.setData([
+                "doneDateKeys": FieldValue.arrayRemove([dateKey]),
+                "isDone": false
+            ], merge: true)
         }
     }
 
