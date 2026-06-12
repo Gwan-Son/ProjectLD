@@ -67,8 +67,8 @@ struct HomeView: View {
 
             Spacer()
 
-            Text("아워 브릿지")
-                .font(.system(size: 22, weight: .bold, design: .serif))
+            Text("Our Bridge")
+                .font(.system(size: 22, weight: .medium, design: .serif))
                 .foregroundStyle(HomePalette.primary)
 
             Spacer()
@@ -338,13 +338,7 @@ struct HomeView: View {
     }
 
     private func avatar(for user: LongdyUser?, fallback: String) -> some View {
-        Text(user?.friendlyName.first.map(String.init) ?? fallback)
-            .font(.system(size: 14, weight: .bold, design: .rounded))
-            .foregroundStyle(HomePalette.primary)
-            .frame(width: 40, height: 40)
-            .background(HomePalette.surface)
-            .clipShape(Circle())
-            .overlay(Circle().stroke(HomePalette.hero, lineWidth: 2))
+        BridgeAvatar(user: user, fallback: fallback)
     }
 
     private func glassCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
