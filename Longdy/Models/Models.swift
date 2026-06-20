@@ -1,12 +1,15 @@
 import Foundation
 
-struct LongdyUser: Identifiable, Equatable {
+struct LongdyUser: Identifiable, Equatable, Codable {
     let id: String
     var email: String
     var displayName: String
     var nickname: String
     var timezoneId: String
     var cityName: String
+    var latitude: Double?
+    var longitude: Double?
+    var locationUpdatedAt: Date?
     var partnerCoupleId: String?
     var createdAt: Date
 
@@ -15,16 +18,17 @@ struct LongdyUser: Identifiable, Equatable {
     }
 }
 
-struct Couple: Identifiable, Equatable {
+struct Couple: Identifiable, Equatable, Codable {
     let id: String
     var memberIds: [String]
+    var memberProfiles: [LongdyUser] = []
     var inviteCode: String
     var nextMeetDate: Date?
     var anniversaryDate: Date?
     var createdAt: Date
 }
 
-enum Mood: String, CaseIterable, Identifiable {
+enum Mood: String, CaseIterable, Identifiable, Codable {
     case clear = "맑음"
     case calm = "편안"
     case tired = "지침"
@@ -33,9 +37,20 @@ enum Mood: String, CaseIterable, Identifiable {
     case excited = "설렘"
 
     var id: String { rawValue }
+
+    var iconName: String {
+        switch self {
+        case .clear: "mood-clear"
+        case .calm: "mood-calm"
+        case .tired: "mood-tired"
+        case .lonely: "mood-lonely"
+        case .sensitive: "mood-sensitive"
+        case .excited: "mood-excited"
+        }
+    }
 }
 
-enum LongdyStatus: String, CaseIterable, Identifiable {
+enum LongdyStatus: String, CaseIterable, Identifiable, Codable {
     case working = "일하는 중"
     case moving = "이동 중"
     case resting = "쉬는 중"
@@ -43,9 +58,19 @@ enum LongdyStatus: String, CaseIterable, Identifiable {
     case callable = "지금 통화 가능"
 
     var id: String { rawValue }
+
+    var iconName: String {
+        switch self {
+        case .working: "status-working"
+        case .moving: "status-moving"
+        case .resting: "status-resting"
+        case .bedtime: "status-bedtime"
+        case .callable: "status-callable"
+        }
+    }
 }
 
-enum CallIntent: String, CaseIterable, Identifiable {
+enum CallIntent: String, CaseIterable, Identifiable, Codable {
     case available = "가능"
     case later = "나중에"
     case unavailable = "오늘 어려움"
@@ -53,7 +78,7 @@ enum CallIntent: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct CheckIn: Identifiable, Equatable {
+struct CheckIn: Identifiable, Equatable, Codable {
     let id: String
     var userId: String
     var mood: Mood
@@ -71,7 +96,7 @@ struct CheckIn: Identifiable, Equatable {
     }
 }
 
-enum EventType: String, CaseIterable, Identifiable {
+enum EventType: String, CaseIterable, Identifiable, Codable {
     case mine = "내 일정"
     case partner = "상대 일정"
     case meet = "다음 만남"
@@ -80,7 +105,7 @@ enum EventType: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct CoupleEvent: Identifiable, Equatable {
+struct CoupleEvent: Identifiable, Equatable, Codable {
     let id: String
     var ownerUserId: String
     var title: String
@@ -90,16 +115,7 @@ struct CoupleEvent: Identifiable, Equatable {
     var memo: String
 }
 
-struct Availability: Identifiable, Equatable {
-    let id: String
-    var userId: String
-    var startAt: Date
-    var endAt: Date
-    var label: String
-    var createdAt: Date
-}
-
-enum CareRepeatRule: String, CaseIterable, Identifiable {
+enum CareRepeatRule: String, CaseIterable, Identifiable, Codable {
     case once = "오늘만"
     case daily = "매일"
     case weekdays = "평일"
@@ -125,7 +141,7 @@ enum CareRepeatRule: String, CaseIterable, Identifiable {
     }
 }
 
-struct CareItem: Identifiable, Equatable {
+struct CareItem: Identifiable, Equatable, Codable {
     let id: String
     var userId: String
     var dateKey: String
@@ -180,17 +196,17 @@ enum CareCategoryFallback {
 
     var iconName: String {
         switch self {
-        case .meal: "fork.knife"
-        case .water: "drop"
-        case .medicine: "cross.case"
-        case .rest: "cup.and.saucer"
-        case .sleep: "moon"
-        case .walk: "figure.walk"
+        case .meal: "meal"
+        case .water: "drink-water"
+        case .medicine: "medicine"
+        case .rest: "rest"
+        case .sleep: "sleep"
+        case .walk: "walk"
         }
     }
 }
 
-enum MemoryType: String, CaseIterable, Identifiable {
+enum MemoryType: String, CaseIterable, Identifiable, Codable {
     case text = "text"
     case photo = "photo"
     case audio = "audio"
@@ -206,7 +222,7 @@ enum MemoryType: String, CaseIterable, Identifiable {
     }
 }
 
-struct MemoryNote: Identifiable, Equatable {
+struct MemoryNote: Identifiable, Equatable, Codable {
     let id: String
     var userId: String
     var type: MemoryType
@@ -215,14 +231,45 @@ struct MemoryNote: Identifiable, Equatable {
     var createdAt: Date
 }
 
-struct WeatherSummary: Equatable {
+struct WeatherSummary: Equatable, Codable {
     var cityName: String
     var summary: String
-    var temperature: Int
+    var temperature: Int?
+    var iconName: String
+    var updatedAt: Date?
+    var feelsLike: Int?
+    var minimumTemperature: Int?
+    var maximumTemperature: Int?
+    var humidity: Int?
+    var pressure: Int?
+    var windSpeed: Double?
+    var visibility: Int?
+    var cloudiness: Int?
+    var sunrise: Date?
+    var sunset: Date?
+
+    static func placeholder(cityName: String) -> WeatherSummary {
+        WeatherSummary(
+            cityName: cityName,
+            summary: "날씨 준비 중",
+            temperature: nil,
+            iconName: "partly-cloudy",
+            updatedAt: nil,
+            feelsLike: nil,
+            minimumTemperature: nil,
+            maximumTemperature: nil,
+            humidity: nil,
+            pressure: nil,
+            windSpeed: nil,
+            visibility: nil,
+            cloudiness: nil,
+            sunrise: nil,
+            sunset: nil
+        )
+    }
 }
 
 enum LongdyError: LocalizedError {
-    case firebaseNotConfigured
     case missingUser
     case missingCouple
     case invalidInviteCode
@@ -231,7 +278,6 @@ enum LongdyError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .firebaseNotConfigured: "Firebase 설정 파일이 필요해요."
         case .missingUser: "로그인이 필요해요."
         case .missingCouple: "커플 연결이 필요해요."
         case .invalidInviteCode: "초대 코드를 찾을 수 없어요."
