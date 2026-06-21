@@ -3,6 +3,7 @@ import SwiftUI
 enum LongdyColors {
     static let background = Color(red: 0.98, green: 0.95, blue: 0.90)
     static let surface = Color(red: 1.00, green: 0.99, blue: 0.96)
+    static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
     static let peach = Color(red: 0.96, green: 0.63, blue: 0.49)
     static let mint = Color(red: 0.70, green: 0.82, blue: 0.73)
     static let ink = Color(red: 0.13, green: 0.18, blue: 0.24)
@@ -41,17 +42,40 @@ struct SectionTitle: View {
     }
 }
 
+struct BridgeAvatar: View {
+    let user: LongdyUser?
+    let fallback: String
+
+    var body: some View {
+        Text(user?.friendlyName.first.map(String.init) ?? fallback)
+            .font(.system(size: 14, weight: .bold, design: .rounded))
+            .foregroundStyle(Color(red: 0.58, green: 0.28, blue: 0.26))
+            .frame(width: 40, height: 40)
+            .background(Color(red: 1.00, green: 0.98, blue: 0.98))
+            .clipShape(Circle())
+            .overlay(
+                Circle()
+                    .stroke(Color(red: 0.96, green: 0.59, blue: 0.56), lineWidth: 2)
+            )
+    }
+}
+
 struct LoadingView: View {
     let message: String
 
     var body: some View {
         ZStack {
-            LongdyColors.background.ignoresSafeArea()
+            Color(red: 1.00, green: 0.96, blue: 0.97)
+                .ignoresSafeArea()
+
             VStack(spacing: 14) {
                 ProgressView()
+                    .controlSize(.large)
+                    .tint(Color(red: 0.58, green: 0.28, blue: 0.26))
+
                 Text(message)
-                    .font(.callout)
-                    .foregroundStyle(LongdyColors.muted)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(Color(red: 0.33, green: 0.26, blue: 0.25))
             }
         }
     }
@@ -64,9 +88,11 @@ struct EmptyStateView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.title2)
-                .foregroundStyle(LongdyColors.peach)
+            Image("empty-state")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 104, height: 96)
+                .accessibilityHidden(true)
             Text(title)
                 .font(.headline)
                 .foregroundStyle(LongdyColors.ink)
