@@ -70,27 +70,15 @@ enum LongdyStatus: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-enum CallIntent: String, CaseIterable, Identifiable, Codable {
-    case available = "가능"
-    case later = "나중에"
-    case unavailable = "오늘 어려움"
-
-    var id: String { rawValue }
-}
-
 struct CheckIn: Identifiable, Equatable, Codable {
     let id: String
     var userId: String
     var mood: Mood
-    var fatigue: Int
-    var missLevel: Int
     var status: LongdyStatus
-    var canCall: CallIntent
-    var note: String
     var createdAt: Date
     var expiresAt: Date?
 
-    var isExpired: Bool {
+    nonisolated var isExpired: Bool {
         guard let expiresAt else { return false }
         return expiresAt <= Date()
     }
@@ -124,7 +112,7 @@ enum CareRepeatRule: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    func applies(to date: Date, createdAt: Date) -> Bool {
+    nonisolated func applies(to date: Date, createdAt: Date) -> Bool {
         let calendar = Calendar.current
         switch self {
         case .once:
@@ -206,28 +194,12 @@ enum CareCategoryFallback {
     }
 }
 
-enum MemoryType: String, CaseIterable, Identifiable, Codable {
-    case text = "text"
-    case photo = "photo"
-    case audio = "audio"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .text: "텍스트"
-        case .photo: "사진"
-        case .audio: "음성"
-        }
-    }
-}
-
 struct MemoryNote: Identifiable, Equatable, Codable {
     let id: String
     var userId: String
-    var type: MemoryType
     var text: String
     var storageURL: String?
+    var dateKey: String
     var createdAt: Date
 }
 
