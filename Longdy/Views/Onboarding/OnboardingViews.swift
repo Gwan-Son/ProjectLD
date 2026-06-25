@@ -1,28 +1,9 @@
 import SwiftUI
-
-struct FirebaseSetupView: View {
-    var body: some View {
-        ZStack {
-            LongdyColors.background.ignoresSafeArea()
-            LongdyCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    Image(systemName: "flame")
-                        .font(.title)
-                        .foregroundStyle(LongdyColors.peach)
-                    Text("Firebase 설정이 필요해요")
-                        .font(.title2.bold())
-                        .foregroundStyle(LongdyColors.ink)
-                    Text("Firebase 콘솔에서 iOS 앱 `kr.gwanson.Longdy`를 만들고 `GoogleService-Info.plist`를 Longdy 타깃에 추가하면 동기화 MVP가 실행돼요.")
-                        .font(.callout)
-                        .foregroundStyle(LongdyColors.muted)
-                }
-            }
-            .padding()
-        }
-    }
-}
+import CloudKit
+import UIKit
 
 struct AuthView: View {
+    @EnvironmentObject private var appState: AppViewModel
     @StateObject private var viewModel = AuthViewModel()
 
     var body: some View {
@@ -63,52 +44,33 @@ struct AuthView: View {
             }
             .background(LoginPalette.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: LoginRoute.self) { route in
-                switch route {
-                case .signUp:
-                    SignUpView()
-                }
-            }
         }
     }
 
     private var loginPanel: some View {
         VStack(spacing: 24) {
             VStack(spacing: 12) {
-                Button(action: {}) {
-                    Label("카카오로 시작하기", systemImage: "bubble.left.fill")
-                        .foregroundStyle(Color(red: 0.10, green: 0.10, blue: 0.10))
-                        .loginButtonBackground(Color(red: 1.00, green: 0.90, blue: 0.00))
+                Button {
+                    Task {
+                        if await viewModel.signInWithApple() {
+                            appState.start()
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if viewModel.isSigningInWithApple {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "apple.logo")
+                        }
+                        Text("Apple로 계속하기")
+                    }
+                    .foregroundStyle(.white)
+                    .loginButtonBackground(.black)
                 }
+                .disabled(viewModel.isSigningInWithApple)
                 .buttonStyle(.plain)
-
-                Button(action: {}) {
-                    Label("Apple로 계속하기", systemImage: "apple.logo")
-                        .foregroundStyle(.white)
-                        .loginButtonBackground(.black)
-                }
-                .buttonStyle(.plain)
-            }
-
-            HStack(spacing: 16) {
-                Rectangle().fill(LoginPalette.line.opacity(0.45)).frame(height: 1)
-                Text("OR")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(LoginPalette.outline)
-                Rectangle().fill(LoginPalette.line.opacity(0.45)).frame(height: 1)
-            }
-
-            VStack(spacing: 24) {
-                LoginField(title: "이메일 주소") {
-                    TextField("hello@ourbridge.app", text: $viewModel.email)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.emailAddress)
-                        .autocorrectionDisabled()
-                }
-
-                LoginField(title: "비밀번호") {
-                    SecureField("비밀번호를 입력하세요", text: $viewModel.password)
-                }
 
                 if let error = viewModel.errorMessage {
                     Text(error)
@@ -116,42 +78,13 @@ struct AuthView: View {
                         .foregroundStyle(LoginPalette.error)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                Button {
-                    viewModel.isSignUp = false
-                    Task { await viewModel.submit() }
-                } label: {
-                    Text("로그인")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(
-                            LinearGradient(
-                                colors: [LoginPalette.primary, LoginPalette.primaryContainer],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .clipShape(Capsule())
-                        .shadow(color: LoginPalette.primary.opacity(0.2), radius: 12, y: 6)
-                }
-                .buttonStyle(.plain)
             }
 
-            VStack(spacing: 14) {
-                HStack(spacing: 5) {
-                    Text("아직 회원이 아니신가요?")
-                        .foregroundStyle(LoginPalette.muted)
-                    NavigationLink(value: LoginRoute.signUp) {
-                        Text("가입하기")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(LoginPalette.primary)
-                    }
-                }
-                .font(.subheadline)
-
-                Button("비밀번호를 잊으셨나요?") {}
+            VStack(spacing: 8) {
+                Text("Apple ID로 안전하게 로그인해요.")
+                    .font(.subheadline)
+                    .foregroundStyle(LoginPalette.muted)
+                Text("이름과 이메일은 최초 로그인 때만 공유될 수 있어요.")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(LoginPalette.outline)
             }
@@ -195,47 +128,6 @@ struct AuthView: View {
     }
 }
 
-private enum LoginRoute: Hashable {
-    case signUp
-}
-
-private struct LoginField<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(LoginPalette.muted)
-                .padding(.leading, 16)
-            content
-                .padding(.horizontal, 20)
-                .frame(height: 56)
-                .background(LoginPalette.surfaceContainerLow)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-    }
-}
-
-private enum LoginPalette {
-    static let background = Color(red: 1.00, green: 0.97, blue: 0.97)
-    static let surfaceContainer = Color(red: 1.00, green: 0.91, blue: 0.95)
-    static let surfaceContainerLow = Color(red: 1.00, green: 0.94, blue: 0.96)
-    static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
-    static let primaryContainer = Color(red: 0.96, green: 0.59, blue: 0.56)
-    static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
-    static let muted = Color(red: 0.33, green: 0.26, blue: 0.25)
-    static let outline = Color(red: 0.53, green: 0.45, blue: 0.44)
-    static let line = Color(red: 0.85, green: 0.76, blue: 0.75)
-    static let error = Color(red: 0.73, green: 0.10, blue: 0.10)
-}
-
 private extension View {
     func loginButtonBackground(_ color: Color) -> some View {
         self
@@ -250,6 +142,7 @@ private extension View {
 struct CoupleSetupView: View {
     @EnvironmentObject private var appState: AppViewModel
     @StateObject private var viewModel = CoupleSetupViewModel()
+    @State private var showingRegenerateConfirmation = false
     @State private var showingCopyAlert = false
 
     var body: some View {
@@ -290,6 +183,35 @@ struct CoupleSetupView: View {
         } message: {
             Text("초대 코드가 클립보드에 복사됐어요.")
         }
+        .alert("공유 초대를 재생성할까요?", isPresented: $showingRegenerateConfirmation) {
+            Button("취소", role: .cancel) {}
+            Button("재생성", role: .destructive) {
+                Task {
+                    if let couple = await viewModel.regenerateCouple(
+                        session: appState.appleSession,
+                        currentCoupleId: appState.currentProfile?.partnerCoupleId ?? appState.couple?.id
+                    ) {
+                        appState.couple = couple
+                        appState.currentProfile?.partnerCoupleId = couple.id
+                        appState.start()
+                    }
+                }
+            }
+        } message: {
+            Text("기존 초대 코드는 더 이상 사용할 수 없고 새 코드가 만들어져요.")
+        }
+        .task(id: appState.currentProfile?.partnerCoupleId) {
+            await pollPendingCoupleConnection()
+        }
+    }
+
+    private func pollPendingCoupleConnection() async {
+        guard appState.currentProfile?.partnerCoupleId != nil else { return }
+        while !Task.isCancelled {
+            if (appState.couple?.memberIds.count ?? 0) >= 2 { return }
+            await appState.refreshCoupleStatus()
+            try? await Task.sleep(for: .seconds(3))
+        }
     }
 
     private var topBar: some View {
@@ -325,31 +247,11 @@ struct CoupleSetupView: View {
                 .fill(CoupleSetupPalette.primaryContainer.opacity(0.16))
                 .frame(width: 260, height: 260)
 
-            RoundedRectangle(cornerRadius: 40, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [CoupleSetupPalette.primary, CoupleSetupPalette.secondary],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 148, height: 148)
-                .rotationEffect(.degrees(45))
-                .shadow(color: CoupleSetupPalette.primary.opacity(0.2), radius: 20, y: 10)
-                .overlay {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 58))
-                        .foregroundStyle(.white)
-                }
-
-            Image(systemName: "link")
-                .font(.system(size: 34, weight: .semibold))
-                .foregroundStyle(CoupleSetupPalette.onSecondaryContainer)
-                .frame(width: 86, height: 86)
-                .background(CoupleSetupPalette.secondaryContainer)
-                .clipShape(Circle())
-                .shadow(color: CoupleSetupPalette.primary.opacity(0.15), radius: 14, y: 7)
-                .offset(x: 86, y: 82)
+            Image("couple-link")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 246, height: 246)
+                .shadow(color: CoupleSetupPalette.primary.opacity(0.14), radius: 18, y: 10)
         }
         .frame(height: 280)
         .allowsHitTesting(false)
@@ -380,14 +282,14 @@ struct CoupleSetupView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(CoupleSetupPalette.muted)
 
-                if let inviteCode = appState.couple?.inviteCode, !inviteCode.isEmpty {
-                    Text(inviteCode)
-                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                if let code = appState.couple?.inviteCode, !code.isEmpty {
+                    Text(code)
+                        .font(.system(size: 28, weight: .bold, design: .monospaced))
                         .foregroundStyle(CoupleSetupPalette.ink)
-                        .tracking(3)
+                        .tracking(4)
                         .textSelection(.enabled)
                 } else {
-                    Text("아직 코드가 없어요")
+                    Text("아직 초대가 없어요")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(CoupleSetupPalette.outline)
                 }
@@ -401,28 +303,52 @@ struct CoupleSetupView: View {
                     .stroke(CoupleSetupPalette.line.opacity(0.35), lineWidth: 1)
             }
 
-            if let inviteCode = appState.couple?.inviteCode, !inviteCode.isEmpty {
-                HStack(spacing: 12) {
-                    Button {
-                        UIPasteboard.general.string = inviteCode
-                        showingCopyAlert = true
-                    } label: {
-                        Label("복사", systemImage: "doc.on.doc")
-                    }
-                    .buttonStyle(CouplePrimaryButtonStyle())
+            if appState.couple != nil {
+                VStack(spacing: 12) {
+                    if let code = appState.couple?.inviteCode, !code.isEmpty {
+                        HStack(spacing: 12) {
+                            Button {
+                                UIPasteboard.general.string = code
+                                showingCopyAlert = true
+                            } label: {
+                                Label("복사", systemImage: "doc.on.doc")
+                            }
+                            .buttonStyle(CouplePrimaryButtonStyle())
 
-                    ShareLink(item: "Our Bridge 초대 코드: \(inviteCode)") {
-                        Label("공유하기", systemImage: "square.and.arrow.up")
+                            ShareLink(item: "Our Bridge 초대 코드: \(code)") {
+                                Label("공유하기", systemImage: "square.and.arrow.up")
+                            }
+                            .buttonStyle(CoupleSecondaryButtonStyle())
+                        }
+                    } else {
+                        Text("기존 초대 코드를 찾을 수 없어요. 새 초대 코드를 만들 수 있어요.")
+                            .font(.footnote)
+                            .foregroundStyle(CoupleSetupPalette.muted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Button {
+                        showingRegenerateConfirmation = true
+                    } label: {
+                        Label(viewModel.isCreatingShare ? "재생성 중" : "초대 코드 재생성", systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(CoupleSecondaryButtonStyle())
+                    .disabled(viewModel.isCreatingShare)
                 }
             } else {
                 Button {
-                    Task { await viewModel.createCouple(userId: appState.userId) }
+                    Task {
+                        if let couple = await viewModel.createCouple(session: appState.appleSession) {
+                            appState.couple = couple
+                            appState.currentProfile?.partnerCoupleId = couple.id
+                            appState.start()
+                        }
+                    }
                 } label: {
-                    Label("초대 코드 만들기", systemImage: "plus")
+                    Label(viewModel.isCreatingShare ? "초대 생성 중" : "초대 코드 만들기", systemImage: "plus")
                 }
                 .buttonStyle(CouplePrimaryButtonStyle())
+                .disabled(viewModel.isCreatingShare)
             }
         }
         .padding(24)
@@ -444,37 +370,44 @@ struct CoupleSetupView: View {
 
     private var joinSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("초대코드 입력하기", systemImage: "link.badge.plus")
+            Label("초대 코드 입력하기", systemImage: "link.badge.plus")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(CoupleSetupPalette.secondary)
 
-            TextField("상대방의 코드를 입력하세요", text: $viewModel.inviteCode)
+            TextField("6자리 코드를 입력하세요", text: $viewModel.inviteCode)
+                .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                .foregroundStyle(CoupleSetupPalette.ink)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 18)
                 .frame(height: 56)
-                .background(.white)
+                .background(.white.opacity(0.62))
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .onChange(of: viewModel.inviteCode) { _, newValue in
+                    viewModel.inviteCode = String(
+                        newValue
+                            .uppercased()
+                            .filter { $0.isLetter || $0.isNumber }
+                            .prefix(6)
+                    )
+                }
 
             Button {
-                Task { await viewModel.joinCouple(userId: appState.userId) }
+                Task {
+                    if let couple = await viewModel.joinCouple(
+                        session: appState.appleSession,
+                        currentCoupleId: appState.currentProfile?.partnerCoupleId
+                    ) {
+                        appState.couple = couple
+                        appState.currentProfile?.partnerCoupleId = couple.id
+                        appState.start()
+                    }
+                }
             } label: {
-                Text("연결하기")
-                    .font(.system(size: 20, weight: .medium, design: .serif))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 62)
-                    .background(
-                        LinearGradient(
-                            colors: [CoupleSetupPalette.primary, CoupleSetupPalette.secondary],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .clipShape(Capsule())
-                    .shadow(color: CoupleSetupPalette.primary.opacity(0.2), radius: 12, y: 6)
+                Label(viewModel.isJoining ? "연결 중" : "연결하기", systemImage: "heart.fill")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CouplePrimaryButtonStyle())
+            .disabled(viewModel.isJoining || viewModel.inviteCode.count < 6)
         }
         .padding(24)
         .background(CoupleSetupPalette.surfaceLow)
@@ -507,22 +440,6 @@ private struct CoupleSecondaryButtonStyle: ButtonStyle {
     }
 }
 
-private enum CoupleSetupPalette {
-    static let background = Color(red: 1.00, green: 0.97, blue: 0.97)
-    static let surfaceLow = Color(red: 1.00, green: 0.94, blue: 0.96)
-    static let surfaceHigh = Color(red: 0.98, green: 0.85, blue: 0.91)
-    static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
-    static let primaryContainer = Color(red: 0.96, green: 0.59, blue: 0.56)
-    static let secondary = Color(red: 0.49, green: 0.33, blue: 0.25)
-    static let secondaryContainer = Color(red: 0.99, green: 0.78, blue: 0.68)
-    static let onSecondaryContainer = Color(red: 0.47, green: 0.31, blue: 0.24)
-    static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
-    static let muted = Color(red: 0.33, green: 0.26, blue: 0.25)
-    static let outline = Color(red: 0.53, green: 0.45, blue: 0.44)
-    static let line = Color(red: 0.85, green: 0.76, blue: 0.75)
-    static let error = Color(red: 0.73, green: 0.10, blue: 0.10)
-}
-
 struct MainTabView: View {
     var body: some View {
         TabView {
@@ -533,8 +450,8 @@ struct MainTabView: View {
             CareView()
                 .tabItem { Label("챙김", systemImage: "checklist") }
             MemoriesView()
-                .tabItem { Label("메모", systemImage: "photo.on.rectangle") }
+                .tabItem { Label("한 장", systemImage: "photo.on.rectangle") }
         }
-        .tint(LongdyColors.peach)
+        .tint(LongdyColors.primary)
     }
 }
