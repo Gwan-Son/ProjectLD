@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppViewModel
@@ -6,6 +7,7 @@ struct HomeView: View {
     @State private var showingSettings = false
     @State private var showingMoodEditor = false
     @State private var isSavingMood = false
+    @State private var selectedWeatherUser: LongdyUser?
 
     var body: some View {
         NavigationStack {
@@ -16,7 +18,9 @@ struct HomeView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
                         homeHeader
+                            .zIndex(10)
                         ddayHero
+                            .zIndex(0)
                         timeCards
                         moodCard
                         recentMoments
@@ -27,23 +31,21 @@ struct HomeView: View {
                     .padding(.bottom, 94)
                 }
 
-                Button {} label: {
-                    Image(systemName: "heart.fill")
-                        .font(.title2)
-                        .foregroundStyle(.white)
+                Button(action: presentMoodEditor) {
+                    Image("mood-edit-fab")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(6)
                         .frame(width: 60, height: 60)
                         .background(HomePalette.primary)
                         .clipShape(Circle())
                         .shadow(color: HomePalette.primary.opacity(0.28), radius: 12, y: 6)
                 }
-                .accessibilityLabel("마음 보내기")
+                .accessibilityLabel("기분 공유 수정")
                 .padding(.trailing, 20)
                 .padding(.bottom, 18)
             }
             .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $showingSettings) {
-                SettingsView()
-            }
             .sheet(isPresented: $showingMoodEditor) {
                 MoodEditorSheet(
                     viewModel: moodEditor,
@@ -51,6 +53,17 @@ struct HomeView: View {
                     onSave: saveMood
                 )
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+                .environmentObject(appState)
+                .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $selectedWeatherUser) { user in
+            WeatherDetailView(user: user, weather: appState.weather(for: user)) {
+                appState.refreshLocationAndWeather()
+            }
+            .presentationBackground(.clear)
         }
     }
 
@@ -76,13 +89,20 @@ struct HomeView: View {
             Button {
                 showingSettings = true
             } label: {
-                Image(systemName: "bell")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(HomePalette.muted)
-                    .frame(width: 40, height: 40)
+                Image("settings-icon")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(3)
+                    .frame(width: 50, height: 50)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
             .accessibilityLabel("설정")
         }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .zIndex(10)
     }
 
     private var ddayHero: some View {
@@ -133,6 +153,7 @@ struct HomeView: View {
                     .offset(x: -160, y: 100)
             }
             .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .allowsHitTesting(false)
         }
         .shadow(color: HomePalette.primary.opacity(0.08), radius: 8, y: 4)
     }
@@ -158,35 +179,54 @@ struct HomeView: View {
         let weather = appState.weather(for: user)
         let night = isNight(for: user)
 
-        return glassCard {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("\(title) · \(weather.cityName)")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(HomePalette.muted)
-                        TimelineView(.periodic(from: .now, by: 60)) { context in
-                            Text(timeText(for: user, date: context.date))
-                                .font(.system(size: 29, weight: .bold, design: .serif))
+        return Button {
+            selectedWeatherUser = user
+        } label: {
+            glassCard {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("\(title) · \(weather.cityName)")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(HomePalette.muted)
+                            TimelineView(.periodic(from: .now, by: 60)) { context in
+                                Text(timeText(for: user, date: context.date))
+                                    .font(.system(size: 29, weight: .bold, design: .serif))
+                                    .foregroundStyle(HomePalette.ink)
+                            }
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Image(weather.iconName)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 40, height: 40)
+                            Text(weatherText(weather))
+                                .font(.caption.weight(.medium))
                                 .foregroundStyle(HomePalette.ink)
                         }
                     }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Image(systemName: night ? "moon.fill" : "sun.max.fill")
-                            .font(.system(size: 29))
-                            .foregroundStyle(accent)
-                        Text("\(weather.temperature)°C \(weather.summary)")
+
+                    HStack {
+                        Label(status, systemImage: night ? "moon.stars.fill" : "clock")
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(HomePalette.ink)
+                            .foregroundStyle(accent)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(HomePalette.muted)
                     }
                 }
-
-                Label(status, systemImage: night ? "moon.stars.fill" : "clock")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(accent)
             }
         }
+        .buttonStyle(.plain)
+        .disabled(user == nil)
+        .accessibilityLabel("\(title) 날씨 상세 보기")
+    }
+
+    private func weatherText(_ weather: WeatherSummary) -> String {
+        guard let temperature = weather.temperature else { return weather.summary }
+        return "\(temperature)°C \(weather.summary)"
     }
 
     private var moodCard: some View {
@@ -214,8 +254,28 @@ struct HomeView: View {
 
     private func moodRow(label: String, checkIn: CheckIn?, fallback: String, isPartner: Bool) -> some View {
         HStack(spacing: 14) {
-            Text(moodEmoji(for: checkIn?.mood))
-                .font(.system(size: 28))
+            Group {
+                if let mood = checkIn?.mood {
+                    Image(mood.iconName)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(5)
+                } else if isPartner {
+                    Image("empty-news")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(4)
+                } else {
+                    Image("empty-state")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(4)
+                }
+            }
+            .frame(width: 50, height: 50)
+            .background(HomePalette.surface.opacity(0.75))
+            .clipShape(Circle())
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(label)
                     .font(.system(size: 14, weight: .semibold))
@@ -225,25 +285,39 @@ struct HomeView: View {
                     .foregroundStyle(HomePalette.muted)
             }
             Spacer()
-            Image(systemName: isPartner ? "heart.fill" : "pencil")
-                .font(.system(size: 15))
-                .foregroundStyle(isPartner ? HomePalette.primary : HomePalette.muted)
+            if let status = checkIn?.status {
+                Image(status.iconName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 34, height: 34)
+            } else {
+                Image(isPartner ? "empty-state" : "mood-edit-fab")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 34, height: 34)
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture {
             guard !isPartner else { return }
-            moodEditor.load(from: appState.myLatestCheckIn)
-            showingMoodEditor = true
+            presentMoodEditor()
         }
         .padding(12)
         .background((isPartner ? HomePalette.hero : HomePalette.tertiary).opacity(0.13))
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
+    private func presentMoodEditor() {
+        moodEditor.load(from: appState.myLatestCheckIn)
+        showingMoodEditor = true
+    }
+
     private func saveMood() {
         isSavingMood = true
         Task {
-            await moodEditor.saveCheckIn(userId: appState.userId, coupleId: appState.coupleId)
+            if let checkIn = await moodEditor.saveCheckIn(userId: appState.userId, coupleId: appState.coupleId) {
+                appState.applySavedCheckIn(checkIn)
+            }
             isSavingMood = false
             if moodEditor.errorMessage == nil {
                 showingMoodEditor = false
@@ -268,6 +342,9 @@ struct HomeView: View {
 
             ZStack(alignment: .bottomLeading) {
                 memoryArtwork
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 260)
+                    .clipped()
                 LinearGradient(
                     colors: [.clear, .black.opacity(0.58)],
                     startPoint: .top,
@@ -284,7 +361,9 @@ struct HomeView: View {
                 }
                 .padding(22)
             }
+            .frame(maxWidth: .infinity)
             .frame(height: 260)
+            .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
             .shadow(color: HomePalette.primary.opacity(0.13), radius: 14, y: 7)
         }
@@ -293,13 +372,8 @@ struct HomeView: View {
     @ViewBuilder
     private var memoryArtwork: some View {
         if let urlString = appState.recentMemory?.storageURL,
-           let url = URL(string: urlString),
-           appState.recentMemory?.type == .photo {
-            AsyncImage(url: url) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                memoryPlaceholder
-            }
+           let url = URL(string: urlString) {
+            HomeMemoryArtwork(url: url)
         } else {
             memoryPlaceholder
         }
@@ -386,12 +460,12 @@ struct HomeView: View {
     }
 
     private var memoryCaption: String {
-        appState.recentMemory?.createdAt.formatted(date: .abbreviated, time: .omitted) ?? "우리의 첫 번째 추억을 기다리는 중"
+        appState.recentMemory?.createdAt.formatted(date: .abbreviated, time: .omitted) ?? "오늘의 한 장을 기다리는 중"
     }
 
     private var memoryText: String {
-        guard let memory = appState.recentMemory else { return "\"함께 기억하고 싶은 순간을 남겨보세요.\"" }
-        return memory.text.isEmpty ? "\"사진 속 순간을 오래 간직할게.\"" : "\"\(memory.text)\""
+        guard let memory = appState.recentMemory else { return "\"오늘 서로에게 보여주고 싶은 장면을 남겨보세요.\"" }
+        return memory.text.isEmpty ? "\"오늘의 장면이 조용히 도착했어요.\"" : "\"\(memory.text)\""
     }
 
     private var distanceText: String {
@@ -418,29 +492,58 @@ struct HomeView: View {
         return hour < 6 || hour >= 20
     }
 
-    private func moodEmoji(for mood: Mood?) -> String {
-        switch mood {
-        case .clear: "☀️"
-        case .calm: "☕"
-        case .tired: "😴"
-        case .lonely: "🌙"
-        case .sensitive: "🌧️"
-        case .excited: "✨"
-        case nil: "💭"
+}
+
+private struct HomeMemoryArtwork: View {
+    let url: URL
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                HomeMemoryPlaceholder()
+
+                if url.isFileURL,
+                   let data = try? Data(contentsOf: url),
+                   let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                        .id(url.absoluteString)
+                } else {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .clipped()
+                    } placeholder: {
+                        HomeMemoryPlaceholder()
+                    }
+                    .id(url.absoluteString)
+                }
+            }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 260)
+        .clipped()
     }
 }
 
-private enum HomePalette {
-    static let background = Color(red: 1.00, green: 0.96, blue: 0.97)
-    static let surface = Color(red: 1.00, green: 0.98, blue: 0.98)
-    static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
-    static let hero = Color(red: 0.96, green: 0.59, blue: 0.56)
-    static let heroInk = Color(red: 0.44, green: 0.18, blue: 0.16)
-    static let secondary = Color(red: 0.49, green: 0.33, blue: 0.25)
-    static let tertiary = Color(red: 0.80, green: 0.67, blue: 0.55)
-    static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
-    static let muted = Color(red: 0.33, green: 0.26, blue: 0.25)
+private struct HomeMemoryPlaceholder: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [HomePalette.tertiary, HomePalette.secondary, HomePalette.primary],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 58))
+                .foregroundStyle(.white.opacity(0.45))
+        }
+    }
 }
 
 struct MoodEditorSheet: View {
@@ -452,7 +555,7 @@ struct MoodEditorSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("기분 공유 수정")
                             .font(.system(size: 28, weight: .bold, design: .serif))
@@ -462,11 +565,10 @@ struct MoodEditorSheet: View {
                             .foregroundStyle(HomePalette.muted)
                     }
 
+                    moodSection
+                    statusSection
+
                     editorCard {
-                        pickerRow("마음", selection: $viewModel.mood, values: Mood.allCases)
-                        Divider().opacity(0.35)
-                        pickerRow("상태", selection: $viewModel.status, values: LongdyStatus.allCases)
-                        Divider().opacity(0.35)
                         Picker("유지 시간", selection: $viewModel.duration) {
                             ForEach(MoodShareDuration.allCases) { duration in
                                 Text(duration.title).tag(duration)
@@ -514,6 +616,32 @@ struct MoodEditorSheet: View {
         }
     }
 
+    private var moodSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("지금 마음은 어때요?", iconName: viewModel.mood.iconName)
+            MoodIconPicker(selection: $viewModel.mood)
+        }
+    }
+
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("무엇을 하고 있나요?", iconName: viewModel.status.iconName)
+            StatusIconPicker(selection: $viewModel.status)
+        }
+    }
+
+    private func sectionHeader(_ title: String, iconName: String) -> some View {
+        HStack(spacing: 10) {
+            Image(iconName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 34, height: 34)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(HomePalette.ink)
+        }
+    }
+
     private func editorCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             content()
@@ -528,36 +656,38 @@ struct MoodEditorSheet: View {
         }
     }
 
-    private func pickerRow<Value: RawRepresentable & Hashable & Identifiable>(
-        _ title: String,
-        selection: Binding<Value>,
-        values: [Value]
-    ) -> some View where Value.RawValue == String {
-        Picker(title, selection: selection) {
-            ForEach(values) { value in
-                Text(value.rawValue).tag(value)
-            }
-        }
-        .font(.body)
-        .foregroundStyle(HomePalette.ink)
-        .tint(HomePalette.primary)
-    }
 }
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppViewModel
     @State private var showingCopyAlert = false
+    @State private var showingDisconnectAlert = false
+    @State private var showingWeatherRefreshAlert = false
+    @State private var weatherRefreshSucceeded = false
+    @State private var draftName = ""
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("내 정보") {
-                    HStack {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("이름")
-                        Spacer()
-                        Text(appState.currentProfile?.friendlyName ?? "이름 없음")
+                            .font(.caption.bold())
                             .foregroundStyle(LongdyColors.muted)
+                        HStack(spacing: 10) {
+                            TextField("이름을 입력하세요", text: $draftName)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            Button(appState.isSavingProfile ? "저장 중" : "저장") {
+                                appState.updateNickname(draftName)
+                            }
+                            .disabled(
+                                appState.isSavingProfile
+                                || draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || draftName == appState.currentProfile?.friendlyName
+                            )
+                        }
                     }
                     HStack {
                         Text("도시")
@@ -565,10 +695,43 @@ struct SettingsView: View {
                         Text(appState.currentProfile?.cityName ?? "-")
                             .foregroundStyle(LongdyColors.muted)
                     }
+                    Text("도시는 위치·날씨 새로고침 시 현재 위치 기준으로 자동 변경돼요.")
+                        .font(.caption)
+                        .foregroundStyle(LongdyColors.muted)
                     HStack {
                         Text("시간대")
                         Spacer()
                         Text(appState.currentProfile?.timezoneId ?? "-")
+                            .foregroundStyle(LongdyColors.muted)
+                    }
+                }
+
+                Section("위치와 날씨") {
+                    Button {
+                        Task {
+                            weatherRefreshSucceeded = await appState.refreshLocationAndWeatherNow()
+                            showingWeatherRefreshAlert = true
+                        }
+                    } label: {
+                        HStack {
+                            if appState.isRefreshingLocationWeather {
+                                ProgressView()
+                            }
+                            Label(
+                                appState.isRefreshingLocationWeather ? "새로고침 중" : "위치·날씨 새로고침",
+                                systemImage: "location.fill"
+                            )
+                        }
+                    }
+                    .disabled(appState.isRefreshingLocationWeather)
+
+                    if let message = appState.weatherErrorMessage {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else {
+                        Text("위치는 약 1km 단위로 저장돼요.")
+                            .font(.caption)
                             .foregroundStyle(LongdyColors.muted)
                     }
                 }
@@ -602,6 +765,18 @@ struct SettingsView: View {
                         Text("초대 코드가 아직 없어요.")
                             .foregroundStyle(LongdyColors.muted)
                     }
+
+                    if appState.currentProfile?.partnerCoupleId != nil {
+                        Button(role: .destructive) {
+                            showingDisconnectAlert = true
+                        } label: {
+                            Label(
+                                appState.isDisconnectingCouple ? "연결 끊는 중" : "연결 끊기",
+                                systemImage: "heart.slash"
+                            )
+                        }
+                        .disabled(appState.isDisconnectingCouple)
+                    }
                 }
 
                 Section {
@@ -623,6 +798,26 @@ struct SettingsView: View {
                 Button("확인", role: .cancel) {}
             } message: {
                 Text("초대 코드가 클립보드에 복사됐어요.")
+            }
+            .alert("커플 연결을 끊을까요?", isPresented: $showingDisconnectAlert) {
+                Button("취소", role: .cancel) {}
+                Button("연결 끊기", role: .destructive) {
+                    dismiss()
+                    appState.disconnectCouple()
+                }
+            } message: {
+                Text("이 기기에서 커플 공간 연결이 해제돼요. 다시 연결하려면 초대 코드를 새로 만들어야 해요.")
+            }
+            .alert(weatherRefreshSucceeded ? "새로고침 완료" : "새로고침 실패", isPresented: $showingWeatherRefreshAlert) {
+                Button("확인", role: .cancel) {}
+            } message: {
+                Text(weatherRefreshSucceeded ? "현재 위치와 날씨 정보를 업데이트했어요." : (appState.weatherErrorMessage ?? "위치와 날씨 정보를 업데이트하지 못했어요."))
+            }
+            .onAppear {
+                draftName = appState.currentProfile?.friendlyName ?? ""
+            }
+            .onChange(of: appState.currentProfile?.friendlyName) { _, name in
+                draftName = name ?? ""
             }
         }
     }
