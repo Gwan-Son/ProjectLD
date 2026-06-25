@@ -80,15 +80,9 @@ actor WeatherService {
     private func localizedCityName(latitude: Double, longitude: Double, fallback: String) async -> String {
         let location = CLLocation(latitude: latitude, longitude: longitude)
         let fallbackName = fallback.isEmpty ? "현재 위치" : fallback
-
-        if #available(iOS 26.0, *) {
-            return await localizedCityNameWithMapKit(location: location, fallbackName: fallbackName)
-        }
-
-        return await localizedCityNameWithCoreLocation(location: location, fallbackName: fallbackName)
+        return await localizedCityNameWithMapKit(location: location, fallbackName: fallbackName)
     }
 
-    @available(iOS 26.0, *)
     private func localizedCityNameWithMapKit(location: CLLocation, fallbackName: String) async -> String {
         do {
             guard let request = MKReverseGeocodingRequest(location: location) else {
@@ -102,37 +96,6 @@ actor WeatherService {
         } catch {
             return fallbackName
         }
-    }
-
-    private func localizedCityNameWithCoreLocation(location: CLLocation, fallbackName: String) async -> String {
-        do {
-            let placemark = try await CLGeocoder()
-                .reverseGeocodeLocation(location, preferredLocale: Locale(identifier: "ko_KR"))
-                .first
-            guard let placemark else { return fallbackName }
-            return Self.displayName(for: placemark) ?? fallbackName
-        } catch {
-            return fallbackName
-        }
-    }
-
-    private static func displayName(for placemark: CLPlacemark) -> String? {
-        let locality = cleaned(placemark.locality)
-        let subLocality = cleaned(placemark.subLocality)
-        let administrativeArea = cleaned(placemark.administrativeArea)
-
-        if let locality, let subLocality, locality != subLocality {
-            return "\(locality) \(subLocality)"
-        }
-        if let administrativeArea, let locality, administrativeArea != locality {
-            return "\(administrativeArea) \(locality)"
-        }
-        return locality ?? administrativeArea
-    }
-
-    private static func cleaned(_ value: String?) -> String? {
-        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text?.isEmpty == false ? text : nil
     }
 
     private static var apiKey: String? {
