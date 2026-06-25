@@ -12,13 +12,22 @@ struct CalendarView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 22) {
-                        bridgeHeader
+                        BridgeScreenHeader(
+                            currentUser: appState.currentProfile,
+                            partner: appState.partner,
+                            eyebrow: "함께 바라보는 시간",
+                            title: "우리 캘린더",
+                            summary: calendarSummary,
+                            primaryColor: CalendarPalette.primary,
+                            secondaryColor: CalendarPalette.secondary,
+                            inkColor: CalendarPalette.ink
+                        )
                         monthHeader
                         monthGrid
                         selectedDayEvents
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                    .padding(.top, 18)
                     .padding(.bottom, 92)
                 }
 
@@ -50,18 +59,6 @@ struct CalendarView: View {
             .sheet(item: $viewModel.editingEvent) { event in
                 EventEditorView(viewModel: viewModel, event: event)
             }
-        }
-    }
-
-    private var bridgeHeader: some View {
-        HStack {
-            avatar(for: appState.currentProfile, fallback: "나", stroke: CalendarPalette.hero)
-            Spacer()
-            Text("Our Bridge")
-                .font(.system(size: 24, weight: .medium, design: .serif))
-                .foregroundStyle(CalendarPalette.primary)
-            Spacer()
-            avatar(for: appState.partner, fallback: "?", stroke: CalendarPalette.secondaryContainer)
         }
     }
 
@@ -97,6 +94,11 @@ struct CalendarView: View {
                 .background(CalendarPalette.hero.opacity(0.16))
                 .clipShape(Circle())
         }
+    }
+
+    private var calendarSummary: String {
+        let count = appState.events.count
+        return count == 0 ? "다가올 일정을 천천히 채워요" : "함께 보는 일정 \(count)개"
     }
 
     private var monthGrid: some View {
@@ -164,11 +166,19 @@ struct CalendarView: View {
                                 viewModel.editingEvent = event
                             }
                             Button("삭제", role: .destructive) {
-                                Task { await viewModel.deleteEvent(coupleId: appState.coupleId, event: event) }
+                                Task {
+                                    if await viewModel.deleteEvent(coupleId: appState.coupleId, event: event) {
+                                        appState.removeEvent(event)
+                                    }
+                                }
                             }
                         }
                         .swipeActionsIfAvailable {
-                            Task { await viewModel.deleteEvent(coupleId: appState.coupleId, event: event) }
+                            Task {
+                                if await viewModel.deleteEvent(coupleId: appState.coupleId, event: event) {
+                                    appState.removeEvent(event)
+                                }
+                            }
                         }
                     }
                 }
@@ -205,15 +215,6 @@ struct CalendarView: View {
             .shadow(color: CalendarPalette.primary.opacity(0.05), radius: 12, y: 5)
     }
 
-    private func avatar(for user: LongdyUser?, fallback: String, stroke: Color) -> some View {
-        Text(user?.friendlyName.first.map(String.init) ?? fallback)
-            .font(.system(size: 14, weight: .bold, design: .rounded))
-            .foregroundStyle(CalendarPalette.primary)
-            .frame(width: 40, height: 40)
-            .background(CalendarPalette.surface)
-            .clipShape(Circle())
-            .overlay(Circle().stroke(stroke, lineWidth: 2))
-    }
 }
 
 struct EventEditorView: View {
@@ -226,6 +227,7 @@ struct EventEditorView: View {
     @State private var endAt: Date
     @State private var type: EventType
     @State private var memo: String
+    @State private var isAllDay: Bool
 
     init(viewModel: CalendarViewModel, initialDate: Date = Date()) {
         self.viewModel = viewModel
@@ -237,6 +239,7 @@ struct EventEditorView: View {
         _endAt = State(initialValue: hour.addingTimeInterval(3600))
         _type = State(initialValue: .mine)
         _memo = State(initialValue: "")
+        _isAllDay = State(initialValue: false)
     }
 
     init(viewModel: CalendarViewModel, event: CoupleEvent) {
@@ -247,6 +250,7 @@ struct EventEditorView: View {
         _endAt = State(initialValue: event.endAt)
         _type = State(initialValue: event.type)
         _memo = State(initialValue: event.memo)
+        _isAllDay = State(initialValue: Self.isAllDayEvent(startAt: event.startAt, endAt: event.endAt))
     }
 
     var body: some View {
@@ -273,9 +277,29 @@ struct EventEditorView: View {
                     }
 
                     editorCard {
-                        DatePicker("시작", selection: $startAt)
+                        Toggle("하루종일", isOn: $isAllDay)
+                            .tint(CalendarPalette.primary)
+                            .onChange(of: isAllDay) { _, enabled in
+                                if enabled {
+                                    applyAllDayRange(for: startAt)
+                                }
+                            }
+
                         Divider().opacity(0.35)
-                        DatePicker("끝", selection: $endAt)
+
+                        if isAllDay {
+                            DatePicker("날짜", selection: $startAt, displayedComponents: .date)
+                                .onChange(of: startAt) { _, newValue in
+                                    applyAllDayRange(for: newValue)
+                                }
+                        } else {
+                            DatePicker("시작", selection: $startAt)
+                                .onChange(of: startAt) { _, newValue in
+                                    endAt = newValue
+                                }
+                            Divider().opacity(0.35)
+                            DatePicker("끝", selection: $endAt)
+                        }
                     }
 
                     editorCard {
@@ -294,12 +318,16 @@ struct EventEditorView: View {
 
                     Button("저장") {
                         Task {
+                            let saveStartAt = normalizedStartAt
+                            let saveEndAt = normalizedEndAt
                             if let event {
-                                if await viewModel.updateEvent(coupleId: appState.coupleId, event: event, title: title, startAt: startAt, endAt: endAt, type: type, memo: memo) {
+                                if let updatedEvent = await viewModel.updateEvent(coupleId: appState.coupleId, event: event, title: title, startAt: saveStartAt, endAt: saveEndAt, type: type, memo: memo) {
+                                    appState.applySavedEvent(updatedEvent)
                                     dismiss()
                                 }
                             } else {
-                                if await viewModel.saveEvent(userId: appState.userId, coupleId: appState.coupleId, title: title, startAt: startAt, endAt: endAt, type: type, memo: memo) {
+                                if let savedEvent = await viewModel.saveEvent(userId: appState.userId, coupleId: appState.coupleId, title: title, startAt: saveStartAt, endAt: saveEndAt, type: type, memo: memo) {
+                                    appState.applySavedEvent(savedEvent)
                                     dismiss()
                                 }
                             }
@@ -322,6 +350,35 @@ struct EventEditorView: View {
                 }
             }
         }
+    }
+
+    private var normalizedStartAt: Date {
+        isAllDay ? Calendar.current.startOfDay(for: startAt) : startAt
+    }
+
+    private var normalizedEndAt: Date {
+        guard isAllDay else { return endAt }
+        return Calendar.current.date(byAdding: .day, value: 1, to: normalizedStartAt) ?? normalizedStartAt
+    }
+
+    private func applyAllDayRange(for date: Date) {
+        let startOfDay = Calendar.current.startOfDay(for: date)
+        startAt = startOfDay
+        endAt = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+    }
+
+    private static func isAllDayEvent(startAt: Date, endAt: Date) -> Bool {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: startAt)
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+        let legacyEndOfDay = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: startAt)
+            ?? calendar.date(bySettingHour: 23, minute: 0, second: 0, of: startAt)
+            ?? startAt
+        return calendar.isDate(startAt, equalTo: startOfDay, toGranularity: .minute)
+            && (
+                calendar.isDate(endAt, equalTo: nextDay, toGranularity: .minute)
+                || calendar.isDate(endAt, equalTo: legacyEndOfDay, toGranularity: .minute)
+            )
     }
 
     private func editorCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -452,9 +509,16 @@ struct CalendarEventRow: View {
     private var timeText: String {
         let calendar = Calendar.current
         let sameDay = calendar.isDate(event.startAt, inSameDayAs: event.endAt)
-        let wholeDay = calendar.component(.hour, from: event.startAt) == 0 &&
-            calendar.component(.minute, from: event.startAt) == 0 &&
-            calendar.component(.hour, from: event.endAt) == 23
+        let startOfDay = calendar.startOfDay(for: event.startAt)
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+        let wholeDay = calendar.isDate(event.startAt, equalTo: startOfDay, toGranularity: .minute) &&
+            (
+                calendar.isDate(event.endAt, equalTo: nextDay, toGranularity: .minute) ||
+                (
+                    calendar.isDate(event.startAt, inSameDayAs: event.endAt) &&
+                    calendar.component(.hour, from: event.endAt) == 23
+                )
+            )
         if wholeDay {
             return "\(event.type.rawValue) · 종일"
         }
@@ -470,30 +534,6 @@ struct CalendarEventRow: View {
         case .partner: "person.2.fill"
         case .meet: "airplane.departure"
         case .anniversary: "sparkles"
-        }
-    }
-}
-
-private enum CalendarPalette {
-    static let background = Color(red: 1.00, green: 0.97, blue: 0.98)
-    static let surface = Color(red: 1.00, green: 0.98, blue: 0.98)
-    static let surfaceVariant = Color(red: 0.98, green: 0.85, blue: 0.91)
-    static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
-    static let hero = Color(red: 0.96, green: 0.59, blue: 0.56)
-    static let heroInk = Color(red: 0.44, green: 0.18, blue: 0.16)
-    static let secondary = Color(red: 0.49, green: 0.33, blue: 0.25)
-    static let secondaryContainer = Color(red: 0.99, green: 0.78, blue: 0.68)
-    static let tertiary = Color(red: 0.45, green: 0.35, blue: 0.25)
-    static let tertiaryContainer = Color(red: 0.80, green: 0.67, blue: 0.55)
-    static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
-    static let muted = Color(red: 0.33, green: 0.26, blue: 0.25)
-
-    static func eventColor(for type: EventType) -> Color {
-        switch type {
-        case .mine: primary
-        case .partner: secondary
-        case .meet: tertiary
-        case .anniversary: Color(red: 0.70, green: 0.36, blue: 0.52)
         }
     }
 }
