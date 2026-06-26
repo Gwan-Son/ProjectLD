@@ -192,7 +192,7 @@ extension CloudKitService {
         do {
             _ = try await save(record, database: publicDatabase)
         } catch let error as CKError where error.code == .permissionFailure {
-            throw LongdyError.invalidInput("CloudKit Public Database의 InviteCode 쓰기 권한이 필요해요. iCloud Console에서 Authenticated 역할의 Create/Write 권한을 켜 주세요.")
+            throw LongdyError.invalidInput("초대 코드를 저장하지 못했어요. iCloud 설정을 확인한 뒤 다시 시도해 주세요.")
         }
     }
 

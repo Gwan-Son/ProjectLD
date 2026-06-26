@@ -695,7 +695,7 @@ struct SettingsView: View {
                         Text(appState.currentProfile?.cityName ?? "-")
                             .foregroundStyle(LongdyColors.muted)
                     }
-                    Text("도시는 위치·날씨 새로고침 시 현재 위치 기준으로 자동 변경돼요.")
+                    Text("위치·날씨 새로고침을 하면 현재 위치 기준으로 도시가 바뀌어요.")
                         .font(.caption)
                         .foregroundStyle(LongdyColors.muted)
                     HStack {
@@ -730,7 +730,7 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                     } else {
-                        Text("위치는 약 1km 단위로 저장돼요.")
+                        Text("정확한 주소는 저장하지 않고, 날씨와 도시 표시용 위치만 사용해요.")
                             .font(.caption)
                             .foregroundStyle(LongdyColors.muted)
                     }
@@ -811,7 +811,7 @@ struct SettingsView: View {
             .alert(weatherRefreshSucceeded ? "새로고침 완료" : "새로고침 실패", isPresented: $showingWeatherRefreshAlert) {
                 Button("확인", role: .cancel) {}
             } message: {
-                Text(weatherRefreshSucceeded ? "현재 위치와 날씨 정보를 업데이트했어요." : (appState.weatherErrorMessage ?? "위치와 날씨 정보를 업데이트하지 못했어요."))
+                Text(weatherRefreshSucceeded ? "현재 위치 기준으로 도시와 날씨를 업데이트했어요." : (appState.weatherErrorMessage ?? "위치와 날씨 정보를 업데이트하지 못했어요."))
             }
             .onAppear {
                 draftName = appState.currentProfile?.friendlyName ?? ""

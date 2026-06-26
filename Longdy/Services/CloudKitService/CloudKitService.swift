@@ -124,17 +124,17 @@ extension Error {
         case .notAuthenticated:
             return "iCloud 로그인이 필요해요. 설정 앱에서 iCloud 계정을 확인해 주세요."
         case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited:
-            return "iCloud 연결이 불안정해요. 잠시 후 다시 시도해 주세요."
+            return "iCloud 연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요."
         case .permissionFailure:
-            return "iCloud 공유 권한이 부족해요. 커플 연결 상태나 CloudKit 권한을 확인해 주세요."
+            return "iCloud 공유 권한을 확인하지 못했어요. 커플 연결 상태를 확인한 뒤 다시 시도해 주세요."
         case .quotaExceeded:
             return "iCloud 저장 공간이 부족해요. iCloud 용량을 확인해 주세요."
         case .zoneNotFound, .userDeletedZone:
             return "커플 공간을 찾을 수 없어요. 앱을 다시 실행하거나 다시 연결해 주세요."
         case .unknownItem:
-            return "iCloud 데이터를 찾을 수 없어요. 잠시 후 다시 동기화해 주세요."
+            return "iCloud 데이터를 아직 찾지 못했어요. 잠시 후 다시 동기화해 주세요."
         case .serverRecordChanged:
-            return "상대가 같은 데이터를 먼저 바꿨어요. 새로고침 후 다시 시도해 주세요."
+            return "같은 데이터가 다른 기기에서 먼저 바뀌었어요. 새로고침 후 다시 시도해 주세요."
         default:
             return cloudKitError.localizedDescription
         }

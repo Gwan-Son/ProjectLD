@@ -74,9 +74,9 @@ enum LocationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .permissionDenied: "위치 권한이 꺼져 있어요. 설정에서 위치 접근을 허용해 주세요."
-        case .unavailable: "현재 위치를 확인할 수 없어요."
-        case .cancelled: "이전 위치 요청이 취소됐어요."
+        case .permissionDenied: "위치 접근이 꺼져 있어요. 설정에서 위치 사용을 허용해 주세요."
+        case .unavailable: "현재 위치를 확인하지 못했어요. 잠시 후 다시 시도해 주세요."
+        case .cancelled: "이전 위치 요청이 취소됐어요. 다시 시도해 주세요."
         }
     }
 }
