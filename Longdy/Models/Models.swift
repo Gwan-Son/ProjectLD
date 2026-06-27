@@ -203,6 +203,58 @@ struct MemoryNote: Identifiable, Equatable, Codable {
     var createdAt: Date
 }
 
+struct BridgeMilestone: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let detail: String
+    let earnedPoints: Int
+    let goalPoints: Int
+
+    var isComplete: Bool {
+        earnedPoints == goalPoints
+    }
+}
+
+struct DailyBridgeProgress: Equatable {
+    let milestones: [BridgeMilestone]
+
+    var points: Int {
+        milestones.reduce(0) { $0 + $1.earnedPoints }
+    }
+
+    var goalPoints: Int {
+        milestones.reduce(0) { $0 + $1.goalPoints }
+    }
+
+    var fraction: Double {
+        guard goalPoints > 0 else { return 0 }
+        return min(Double(points) / Double(goalPoints), 1)
+    }
+
+    var stageTitle: String {
+        switch points {
+        case 100...: "오늘의 다리 완성"
+        case 75..<100: "거의 이어졌어요"
+        case 50..<75: "절반을 건너왔어요"
+        case 25..<50: "서로에게 가는 중"
+        case 1..<25: "다리 놓기 시작"
+        default: "첫 발판을 기다리는 중"
+        }
+    }
+}
+
+enum BridgeActivityKind: String, Codable {
+    case calendarViewed
+}
+
+struct BridgeActivity: Identifiable, Equatable, Codable {
+    let id: String
+    var userId: String
+    var kind: BridgeActivityKind
+    var dateKey: String
+    var createdAt: Date
+}
+
 struct WeatherSummary: Equatable, Codable {
     var cityName: String
     var summary: String
