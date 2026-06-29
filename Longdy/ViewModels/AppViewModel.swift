@@ -11,6 +11,7 @@ private struct CachedCoupleSnapshot: Codable {
     var events: [CoupleEvent]
     var careItems: [CareItem]
     var memories: [MemoryNote]
+    var bridgeActivities: [BridgeActivity]?
 }
 
 private enum LocalCoupleDataCache {
@@ -45,6 +46,8 @@ final class AppViewModel: ObservableObject {
     @Published var events: [CoupleEvent] = []
     @Published var careItems: [CareItem] = []
     @Published var memories: [MemoryNote] = []
+    @Published var bridgeActivities: [BridgeActivity] = []
+    @Published var homeCardOrder = HomeCardKind.allCases
     @Published var weatherByUserId: [String: WeatherSummary] = [:]
     @Published var weatherErrorMessage: String?
     @Published var errorMessage: String?
@@ -56,6 +59,7 @@ final class AppViewModel: ObservableObject {
     private let appleSessionStore = AppleSessionStore.shared
     private let cloudKitService = CloudKitService.shared
     private let weatherService = WeatherService.shared
+    private let partnerNotificationService = PartnerNotificationService.shared
     private let locationService = LocationService()
     private var hasRequestedCurrentLocation = false
     private var hasLoadedCoupleData = false
@@ -63,6 +67,13 @@ final class AppViewModel: ObservableObject {
     private var isRefreshingCoupleData = false
     private var lastCoupleDataRefreshAt: Date?
     private let minimumCoupleDataRefreshInterval: TimeInterval = 5
+
+    init() {
+        CloudKitChangeCoordinator.shared.handler = { [weak self] in
+            guard let self else { return false }
+            return await self.processRemoteCloudKitChange()
+        }
+    }
 
     var userId: String? { appleSession?.appleUserId }
     var coupleId: String? { currentProfile?.partnerCoupleId }
@@ -104,6 +115,72 @@ final class AppViewModel: ObservableObject {
         return careItems.filter { $0.userId == partnerId }
     }
 
+    var dailyBridgeProgress: DailyBridgeProgress {
+        let calendar = Calendar.current
+        let today = Date()
+        let dateKey = DateKey.dateKey(for: today)
+        let myId = userId
+        let partnerId = partner?.id
+
+        func hasTodayCheckIn(_ id: String?) -> Bool {
+            guard let id else { return false }
+            return checkIns.contains { $0.userId == id && calendar.isDate($0.createdAt, inSameDayAs: today) }
+        }
+
+        func hasTodayPhoto(_ id: String?) -> Bool {
+            guard let id else { return false }
+            return memories.contains { $0.userId == id && $0.dateKey == dateKey }
+        }
+
+        func hasCompletedCare(_ id: String?) -> Bool {
+            guard let id else { return false }
+            return careItems.contains { $0.userId == id && $0.doneDateKeys.contains(dateKey) }
+        }
+
+        let moodPoints = (hasTodayCheckIn(myId) ? 10 : 0) + (hasTodayCheckIn(partnerId) ? 10 : 0)
+        let photoPoints = (hasTodayPhoto(myId) ? 15 : 0) + (hasTodayPhoto(partnerId) ? 15 : 0)
+        let carePoints = (hasCompletedCare(myId) ? 15 : 0) + (hasCompletedCare(partnerId) ? 15 : 0)
+        func hasViewedCalendar(_ id: String?) -> Bool {
+            guard let id else { return false }
+            return bridgeActivities.contains {
+                $0.userId == id && $0.kind == .calendarViewed && $0.dateKey == dateKey
+            }
+        }
+
+        let calendarPoints = (hasViewedCalendar(myId) ? 10 : 0) + (hasViewedCalendar(partnerId) ? 10 : 0)
+
+        return DailyBridgeProgress(milestones: [
+            BridgeMilestone(
+                id: "mood",
+                title: "마음 건네기",
+                detail: "두 사람의 오늘 기분 공유",
+                earnedPoints: moodPoints,
+                goalPoints: 20
+            ),
+            BridgeMilestone(
+                id: "photo",
+                title: "장면 나누기",
+                detail: "두 사람의 오늘의 한 장",
+                earnedPoints: photoPoints,
+                goalPoints: 30
+            ),
+            BridgeMilestone(
+                id: "care",
+                title: "서로 챙기기",
+                detail: "두 사람이 챙김 하나씩 완료",
+                earnedPoints: carePoints,
+                goalPoints: 30
+            ),
+            BridgeMilestone(
+                id: "calendar",
+                title: "오늘 일정 확인하기",
+                detail: "두 사람이 오늘 캘린더 확인",
+                earnedPoints: calendarPoints,
+                goalPoints: 20
+            )
+        ])
+    }
+
     static var preview: AppViewModel {
         let model = AppViewModel()
         model.isLoadingSession = false
@@ -119,6 +196,7 @@ final class AppViewModel: ObservableObject {
             isLoadingSession = false
             return
         }
+        loadHomeCardOrder(for: session.appleUserId)
 
         Task {
             do {
@@ -286,6 +364,7 @@ final class AppViewModel: ObservableObject {
                 events = []
                 careItems = []
                 memories = []
+                bridgeActivities = []
             } catch {
                 errorMessage = error.longdyUserMessage
             }
@@ -304,6 +383,12 @@ final class AppViewModel: ObservableObject {
         events.removeAll { $0.id == event.id }
         events.append(event)
         events.sort { $0.startAt < $1.startAt }
+        if event.type == .meet {
+            couple?.nextMeetDate = event.startAt
+            Task {
+                await refreshCoupleStatus()
+            }
+        }
         saveCurrentCoupleCache()
     }
 
@@ -347,6 +432,61 @@ final class AppViewModel: ObservableObject {
     func removeMemory(_ memory: MemoryNote) {
         memories.removeAll { $0.id == memory.id }
         saveCurrentCoupleCache()
+    }
+
+    func markCalendarViewedToday() {
+        guard let userId, let coupleId else { return }
+        let dateKey = todayDateKey
+        guard !bridgeActivities.contains(where: {
+            $0.userId == userId && $0.kind == .calendarViewed && $0.dateKey == dateKey
+        }) else { return }
+
+        let pending = BridgeActivity(
+            id: "pending-calendar-\(userId)-\(dateKey)",
+            userId: userId,
+            kind: .calendarViewed,
+            dateKey: dateKey,
+            createdAt: Date()
+        )
+        bridgeActivities.append(pending)
+        saveCurrentCoupleCache()
+
+        Task {
+            do {
+                let saved = try await cloudKitService.saveCalendarViewedActivity(
+                    coupleId: coupleId,
+                    userId: userId,
+                    dateKey: dateKey
+                )
+                bridgeActivities.removeAll {
+                    $0.id == pending.id
+                        || ($0.userId == userId && $0.kind == .calendarViewed && $0.dateKey == dateKey)
+                }
+                bridgeActivities.append(saved)
+                saveCurrentCoupleCache()
+            } catch {
+                bridgeActivities.removeAll { $0.id == pending.id }
+                saveCurrentCoupleCache()
+                errorMessage = error.longdyUserMessage
+            }
+        }
+    }
+
+    func moveHomeCard(from source: IndexSet, to destination: Int) {
+        let movingCards = source.sorted().map { homeCardOrder[$0] }
+        var remainingCards = homeCardOrder.enumerated()
+            .filter { !source.contains($0.offset) }
+            .map(\.element)
+        let removedBeforeDestination = source.filter { $0 < destination }.count
+        let insertionIndex = min(max(destination - removedBeforeDestination, 0), remainingCards.count)
+        remainingCards.insert(contentsOf: movingCards, at: insertionIndex)
+        homeCardOrder = remainingCards
+        saveHomeCardOrder()
+    }
+
+    func resetHomeCardOrder() {
+        homeCardOrder = HomeCardKind.allCases
+        saveHomeCardOrder()
     }
 
     func weather(for user: LongdyUser?) -> WeatherSummary {
@@ -393,6 +533,38 @@ final class AppViewModel: ObservableObject {
         Task {
             await loadCoupleData(coupleId: coupleId, forceRefresh: force)
         }
+    }
+
+    func processRemoteCloudKitChange() async -> Bool {
+        guard let coupleId else { return false }
+        let shouldNotify = hasLoadedCoupleData
+        let previousCheckInIDs = Set(checkIns.map(\.id))
+        let previousMemoryIDs = Set(memories.map(\.id))
+        let previousEventIDs = Set(events.map(\.id))
+
+        var didLoad = false
+        for attempt in 0..<3 {
+            if await loadCoupleData(coupleId: coupleId, forceRefresh: true) {
+                didLoad = true
+                break
+            }
+            if attempt < 2 {
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+
+        guard didLoad, shouldNotify, let partnerId = partner?.id else { return didLoad }
+
+        if checkIns.contains(where: { $0.userId == partnerId && !previousCheckInIDs.contains($0.id) }) {
+            await partnerNotificationService.send(.mood)
+        }
+        if memories.contains(where: { $0.userId == partnerId && !previousMemoryIDs.contains($0.id) }) {
+            await partnerNotificationService.send(.photo)
+        }
+        if events.contains(where: { $0.ownerUserId == partnerId && !previousEventIDs.contains($0.id) }) {
+            await partnerNotificationService.send(.event)
+        }
+        return true
     }
 
     func refreshCoupleStatus() async {
@@ -448,6 +620,8 @@ final class AppViewModel: ObservableObject {
         events = []
         careItems = []
         memories = []
+        bridgeActivities = []
+        homeCardOrder = HomeCardKind.allCases
         weatherByUserId = [:]
         weatherErrorMessage = nil
         hasRequestedCurrentLocation = false
@@ -465,6 +639,7 @@ final class AppViewModel: ObservableObject {
             events = []
             careItems = []
             memories = []
+            bridgeActivities = []
             hasLoadedCoupleData = false
         }
         isLoadingCoupleData = false
@@ -489,6 +664,9 @@ final class AppViewModel: ObservableObject {
                 self.bindMembers(from: couple)
                 if (couple?.memberIds.count ?? 0) >= 2 {
                     let resolvedCoupleId = couple?.id ?? coupleId
+                    Task {
+                        await self.partnerNotificationService.requestAuthorizationIfNeeded()
+                    }
                     await self.loadHomeData(coupleId: resolvedCoupleId, showLoading: !self.hasLoadedCoupleData)
                     Task { await self.loadCoupleData(coupleId: resolvedCoupleId, forceRefresh: true) }
                 }
@@ -513,13 +691,14 @@ final class AppViewModel: ObservableObject {
         members.forEach { loadWeather(for: $0) }
     }
 
-    private func loadCoupleData(coupleId: String, showLoading: Bool = false, forceRefresh: Bool = false) async {
-        guard !isRefreshingCoupleData else { return }
+    @discardableResult
+    private func loadCoupleData(coupleId: String, showLoading: Bool = false, forceRefresh: Bool = false) async -> Bool {
+        guard !isRefreshingCoupleData else { return false }
         if !forceRefresh,
            hasLoadedCoupleData,
            let lastCoupleDataRefreshAt,
            Date().timeIntervalSince(lastCoupleDataRefreshAt) < minimumCoupleDataRefreshInterval {
-            return
+            return true
         }
 
         isRefreshingCoupleData = true
@@ -542,17 +721,24 @@ final class AppViewModel: ObservableObject {
             events = data.events
             careItems = data.careItems
             memories = data.memories
+            bridgeActivities = try await cloudKitService.fetchBridgeActivities(
+                coupleId: coupleId,
+                userIds: members.map(\.id),
+                dateKey: todayDateKey
+            )
             hasLoadedCoupleData = true
             lastCoupleDataRefreshAt = Date()
             saveCurrentCoupleCache()
             #if DEBUG
             print("Longdy CloudKit load checkIns: \(data.checkIns.count), events: \(data.events.count), careItems: \(data.careItems.count) for \(coupleId)")
             #endif
+            return true
         } catch {
             errorMessage = error.longdyUserMessage
             #if DEBUG
             print("Longdy CloudKit load failed: \(error.longdyUserMessage)")
             #endif
+            return false
         }
     }
 
@@ -570,6 +756,11 @@ final class AppViewModel: ObservableObject {
             checkIns = data.checkIns
             events = data.events
             careItems = data.careItems
+            bridgeActivities = try await cloudKitService.fetchBridgeActivities(
+                coupleId: coupleId,
+                userIds: members.map(\.id),
+                dateKey: todayDateKey
+            )
             hasLoadedCoupleData = true
             saveCurrentCoupleCache()
             #if DEBUG
@@ -594,6 +785,7 @@ final class AppViewModel: ObservableObject {
         events = snapshot.events
         careItems = snapshot.careItems
         memories = snapshot.memories
+        bridgeActivities = snapshot.bridgeActivities ?? []
         hasLoadedCoupleData = true
         isLoadingCoupleData = false
     }
@@ -608,9 +800,29 @@ final class AppViewModel: ObservableObject {
             checkIns: checkIns,
             events: events,
             careItems: careItems,
-            memories: memories
+            memories: memories,
+            bridgeActivities: bridgeActivities.filter { !$0.id.hasPrefix("pending-") }
         )
         LocalCoupleDataCache.save(snapshot)
+    }
+
+    private func loadHomeCardOrder(for userId: String) {
+        let rawValues = UserDefaults.standard.stringArray(forKey: homeCardOrderKey(userId)) ?? []
+        var seen: Set<HomeCardKind> = []
+        var restored = rawValues
+            .compactMap(HomeCardKind.init(rawValue:))
+            .filter { seen.insert($0).inserted }
+        restored.append(contentsOf: HomeCardKind.allCases.filter { seen.insert($0).inserted })
+        homeCardOrder = restored
+    }
+
+    private func saveHomeCardOrder() {
+        guard let userId else { return }
+        UserDefaults.standard.set(homeCardOrder.map(\.rawValue), forKey: homeCardOrderKey(userId))
+    }
+
+    private func homeCardOrderKey(_ userId: String) -> String {
+        "longdy.homeCardOrder.\(userId)"
     }
 
     private func requestCurrentLocationIfNeeded(for profile: LongdyUser?) {
@@ -623,7 +835,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private func loadWeather(for user: LongdyUser?) {
-        guard let user, let latitude = user.latitude, let longitude = user.longitude else { return }
+        guard let user, let _ = user.latitude, let _ = user.longitude else { return }
         Task {
             await loadWeatherAsync(for: user)
         }

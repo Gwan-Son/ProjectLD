@@ -60,6 +60,9 @@ struct CalendarView: View {
                 EventEditorView(viewModel: viewModel, event: event)
             }
         }
+        .onAppear {
+            appState.markCalendarViewedToday()
+        }
     }
 
     private var monthHeader: some View {
