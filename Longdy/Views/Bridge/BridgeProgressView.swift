@@ -13,7 +13,7 @@ struct BridgeProgressView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 22) {
                     header
-                    emptyArtwork
+                    bridgeArtwork
                     progressSection
                     milestoneSection
                 }
@@ -52,16 +52,16 @@ struct BridgeProgressView: View {
         )
     }
 
-    private var emptyArtwork: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(HomePalette.surface.opacity(0.52))
+    private var bridgeArtwork: some View {
+        Image(progress.assetName)
+            .resizable()
+            .scaledToFill()
             .frame(maxWidth: .infinity)
-            .aspectRatio(1.45, contentMode: .fit)
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(HomePalette.hero.opacity(0.16), lineWidth: 1)
-            }
-            .accessibilityHidden(true)
+            .aspectRatio(1.5, contentMode: .fit)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .id(progress.assetName)
+            .accessibilityLabel(progress.stageTitle)
     }
 
     private var progressSection: some View {
