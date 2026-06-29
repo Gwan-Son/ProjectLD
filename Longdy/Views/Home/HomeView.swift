@@ -24,7 +24,6 @@ struct HomeView: View {
                         ForEach(appState.homeCardOrder) { card in
                             homeCard(card)
                         }
-                        presenceChips
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 12)
@@ -428,12 +427,20 @@ struct HomeView: View {
                     .font(.system(size: 23, weight: .medium, design: .serif))
                     .foregroundStyle(HomePalette.ink)
                 Spacer()
-                Text("저널 보기")
-                    .font(.caption.weight(.semibold))
+                Button {
+                    appState.selectedMainTab = .todayPhoto
+                } label: {
+                    HStack(spacing: 5) {
+                        Text("더보기")
+                            .font(.caption.weight(.semibold))
+                        Image(systemName: "arrow.right")
+                            .font(.caption.weight(.semibold))
+                    }
                     .foregroundStyle(HomePalette.primary)
-                Image(systemName: "arrow.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(HomePalette.primary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("오늘의 한 장 더보기")
             }
 
             ZStack(alignment: .bottomLeading) {
@@ -486,15 +493,6 @@ struct HomeView: View {
                 .font(.system(size: 58))
                 .foregroundStyle(.white.opacity(0.45))
         }
-    }
-
-    private var presenceChips: some View {
-        HStack(spacing: 8) {
-            presenceChip("cup.and.saucer.fill", "모닝 루틴", HomePalette.tertiary)
-            presenceChip("heart.fill", "우리의 기록", HomePalette.hero)
-            presenceChip("map.fill", distanceText, HomePalette.secondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private func presenceChip(_ icon: String, _ text: String, _ color: Color) -> some View {

@@ -48,6 +48,7 @@ final class AppViewModel: ObservableObject {
     @Published var memories: [MemoryNote] = []
     @Published var bridgeActivities: [BridgeActivity] = []
     @Published var homeCardOrder = HomeCardKind.allCases
+    @Published var selectedMainTab: MainTab = .home
     @Published var weatherByUserId: [String: WeatherSummary] = [:]
     @Published var weatherErrorMessage: String?
     @Published var errorMessage: String?
@@ -622,6 +623,7 @@ final class AppViewModel: ObservableObject {
         memories = []
         bridgeActivities = []
         homeCardOrder = HomeCardKind.allCases
+        selectedMainTab = .home
         weatherByUserId = [:]
         weatherErrorMessage = nil
         hasRequestedCurrentLocation = false

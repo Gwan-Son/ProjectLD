@@ -296,6 +296,13 @@ enum HomeCardKind: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum MainTab: Hashable {
+    case home
+    case calendar
+    case care
+    case todayPhoto
+}
+
 struct WeatherSummary: Equatable, Codable {
     var cityName: String
     var summary: String

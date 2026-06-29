@@ -441,16 +441,22 @@ private struct CoupleSecondaryButtonStyle: ButtonStyle {
 }
 
 struct MainTabView: View {
+    @EnvironmentObject private var appState: AppViewModel
+
     var body: some View {
-        TabView {
+        TabView(selection: $appState.selectedMainTab) {
             HomeView()
                 .tabItem { Label("홈", systemImage: "house") }
+                .tag(MainTab.home)
             CalendarView()
                 .tabItem { Label("캘린더", systemImage: "calendar") }
+                .tag(MainTab.calendar)
             CareView()
                 .tabItem { Label("챙김", systemImage: "checklist") }
+                .tag(MainTab.care)
             MemoriesView()
                 .tabItem { Label("한 장", systemImage: "photo.on.rectangle") }
+                .tag(MainTab.todayPhoto)
         }
         .tint(LongdyColors.primary)
     }
