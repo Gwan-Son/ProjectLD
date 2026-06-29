@@ -8,7 +8,13 @@ struct CareView: View {
     @State private var editingItem: CareItem?
 
     private var allCareItems: [CareItem] {
-        (appState.myCareItems + appState.partnerCareItems)
+        let today = Date()
+        let todayKey = DateKey.dateKey(for: today)
+        return (appState.myCareItems + appState.partnerCareItems)
+            .filter { item in
+                if item.repeatRule == .once { return item.dateKey == todayKey }
+                return item.repeatRule.applies(to: today, createdAt: item.createdAt)
+            }
             .sorted { first, second in
                 if first.isDoneToday != second.isDoneToday {
                     return !first.isDoneToday
@@ -27,6 +33,7 @@ struct CareView: View {
                 VStack(spacing: 28) {
                     careHero
                     todayCareList
+                    pastCareLink
                     addCareCard
 
                     if let error = viewModel.errorMessage {
@@ -44,6 +51,9 @@ struct CareView: View {
             .background(CarePalette.background.ignoresSafeArea())
             .sheet(item: $editingItem) { item in
                 CareItemEditorView(item: item, coupleId: appState.coupleId, viewModel: viewModel)
+            }
+            .onAppear {
+                appState.refreshCoupleData(force: true)
             }
         }
     }
@@ -207,6 +217,37 @@ struct CareView: View {
         }
     }
 
+    private var pastCareLink: some View {
+        NavigationLink {
+            PastCareView()
+                .environmentObject(appState)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(CarePalette.primary)
+                    .frame(width: 38, height: 38)
+                    .background(CarePalette.primaryContainer.opacity(0.18))
+                    .clipShape(Circle())
+                Text("지난 챙김 보기")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CarePalette.ink)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(CarePalette.outline)
+            }
+            .padding(16)
+            .background(CarePalette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(CarePalette.line.opacity(0.45), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     private func ownerName(for item: CareItem) -> String {
         if item.userId == appState.userId {
             return "나"
@@ -243,6 +284,137 @@ struct CareView: View {
                 appState.applySavedCareItem(item)
             }
         }
+    }
+}
+
+private struct PastCareView: View {
+    @EnvironmentObject private var appState: AppViewModel
+
+    private var pastItems: [CareItem] {
+        let todayKey = DateKey.dateKey()
+        return (appState.myCareItems + appState.partnerCareItems)
+            .filter { $0.repeatRule == .once && $0.dateKey < todayKey }
+            .sorted {
+                if $0.dateKey != $1.dateKey { return $0.dateKey > $1.dateKey }
+                return $0.createdAt > $1.createdAt
+            }
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 16) {
+                if pastItems.isEmpty {
+                    EmptyStateView(
+                        title: "지난 챙김이 없어요",
+                        message: "기한이 지난 오늘만 챙김이 여기에 모여요.",
+                        systemImage: "clock.arrow.circlepath"
+                    )
+                    .background(CarePalette.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    ForEach(Array(pastItems.enumerated()), id: \.element.id) { index, item in
+                        PastCareItemRow(
+                            item: item,
+                            ownerName: ownerName(for: item),
+                            ownerInitial: ownerInitial(for: item),
+                            tint: rowTint(for: index)
+                        )
+                    }
+                }
+            }
+            .padding(20)
+        }
+        .background(CarePalette.background.ignoresSafeArea())
+        .navigationTitle("지난 챙김")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .onAppear {
+            appState.refreshCoupleData(force: true)
+        }
+    }
+
+    private func ownerName(for item: CareItem) -> String {
+        item.userId == appState.userId ? "나" : (appState.partner?.friendlyName ?? "상대")
+    }
+
+    private func ownerInitial(for item: CareItem) -> String {
+        if item.userId == appState.userId {
+            return appState.currentProfile?.friendlyName.first.map(String.init) ?? "나"
+        }
+        return appState.partner?.friendlyName.first.map(String.init) ?? "?"
+    }
+
+    private func rowTint(for index: Int) -> Color {
+        [CarePalette.primary, CarePalette.secondary, CarePalette.tertiary][index % 3]
+    }
+}
+
+private struct PastCareItemRow: View {
+    let item: CareItem
+    let ownerName: String
+    let ownerInitial: String
+    let tint: Color
+
+    private var wasCompleted: Bool {
+        item.doneDateKeys.contains(item.dateKey)
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            CareIconImage(name: item.iconName)
+                .frame(width: 54, height: 54)
+                .background(tint.opacity(0.14))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(CarePalette.ink)
+                        .lineLimit(1)
+                    Text(ownerInitial)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(CarePalette.primary)
+                        .frame(width: 20, height: 20)
+                        .background(CarePalette.surfaceHigh)
+                        .clipShape(Circle())
+                        .accessibilityLabel(ownerName)
+                }
+
+                Text(dateText)
+                    .font(.caption)
+                    .foregroundStyle(CarePalette.outline)
+
+                if !item.note.isEmpty {
+                    Text(item.note)
+                        .font(.caption)
+                        .foregroundStyle(CarePalette.muted)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: wasCompleted ? "checkmark.circle.fill" : "minus.circle")
+                .font(.system(size: 23))
+                .foregroundStyle(wasCompleted ? CarePalette.primary : CarePalette.outline)
+                .accessibilityLabel(wasCompleted ? "완료" : "미완료")
+        }
+        .padding(16)
+        .background(CarePalette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(CarePalette.line.opacity(0.45), lineWidth: 1)
+        }
+    }
+
+    private var dateText: String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: item.dateKey) else { return item.dateKey }
+        return date.formatted(.dateTime.year().month(.wide).day())
     }
 }
 
