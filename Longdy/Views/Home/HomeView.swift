@@ -6,8 +6,10 @@ struct HomeView: View {
     @StateObject private var moodEditor = CheckInViewModel()
     @State private var showingSettings = false
     @State private var showingMoodEditor = false
+    @State private var showingBridgeProgress = false
     @State private var isSavingMood = false
     @State private var selectedWeatherUser: LongdyUser?
+    @State private var selectedMeetingPage = 1
 
     var body: some View {
         NavigationStack {
@@ -19,11 +21,9 @@ struct HomeView: View {
                     VStack(spacing: 24) {
                         homeHeader
                             .zIndex(10)
-                        ddayHero
-                            .zIndex(0)
-                        timeCards
-                        moodCard
-                        recentMoments
+                        ForEach(appState.homeCardOrder) { card in
+                            homeCard(card)
+                        }
                         presenceChips
                     }
                     .padding(.horizontal, 20)
@@ -56,6 +56,11 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+                .environmentObject(appState)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingBridgeProgress) {
+            BridgeProgressView()
                 .environmentObject(appState)
                 .presentationDragIndicator(.visible)
         }
@@ -105,44 +110,73 @@ struct HomeView: View {
         .zIndex(10)
     }
 
+    @ViewBuilder
+    private func homeCard(_ card: HomeCardKind) -> some View {
+        switch card {
+        case .nextMeeting:
+            ddayHero
+                .zIndex(0)
+        case .connectedBridge:
+            bridgeProgressCard
+        case .timeAndWeather:
+            timeCards
+        case .mood:
+            moodCard
+        case .recentMoments:
+            recentMoments
+        }
+    }
+
     private var ddayHero: some View {
+        TabView(selection: $selectedMeetingPage) {
+            meetingHero(
+                heading: "우리의 이전 만남",
+                date: previousMeetingDate,
+                eventTitle: previousMeetingEvent?.title,
+                isPrevious: true
+            )
+            .tag(0)
+
+            meetingHero(
+                heading: "우리의 다음 만남",
+                date: nextMeetingDate,
+                eventTitle: nextMeetingEvent?.title,
+                isPrevious: false
+            )
+            .tag(1)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .indexViewStyle(.page(backgroundDisplayMode: .interactive))
+        .frame(height: 250)
+    }
+
+    private func meetingHero(heading: String, date: Date?, eventTitle: String?, isPrevious: Bool) -> some View {
         VStack(spacing: 10) {
-            Text("우리의 다음 만남")
+            Text(heading)
                 .font(.caption.weight(.semibold))
                 .tracking(2)
                 .opacity(0.78)
 
-            HStack(alignment: .lastTextBaseline, spacing: 5) {
-                Text(ddayNumber)
-                    .font(.system(size: 54, weight: .bold, design: .serif))
-                Text(ddayUnit)
-                    .font(.system(size: 23, weight: .semibold, design: .serif))
-                    .opacity(0.9)
-            }
+            Text(meetingCountdown(for: date, isPrevious: isPrevious))
+                .font(.system(size: 50, weight: .bold, design: .serif))
 
-            Text(ddaySubtitle)
-                .font(.system(size: 17))
+            Text(meetingSummary(date: date, eventTitle: eventTitle, isPrevious: isPrevious))
+                .font(.system(size: 17, weight: .medium))
+                .lineLimit(1)
 
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.24))
-                    Capsule()
-                        .fill(HomePalette.heroInk)
-                        .frame(width: proxy.size.width * ddayProgress)
-                }
-            }
-            .frame(height: 11)
-            .padding(.top, 10)
-            .padding(.horizontal, 22)
+            Text(meetingDateText(date))
+                .font(.caption.weight(.medium))
+                .opacity(0.72)
         }
         .foregroundStyle(HomePalette.heroInk)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 24)
-        .padding(.vertical, 34)
+        .padding(.top, 24)
+        .padding(.bottom, 32)
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 30, style: .continuous)
-                    .fill(HomePalette.hero)
+                    .fill(isPrevious ? HomePalette.tertiary.opacity(0.72) : HomePalette.hero)
                 Circle()
                     .fill(.white.opacity(0.13))
                     .frame(width: 180)
@@ -155,7 +189,7 @@ struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
             .allowsHitTesting(false)
         }
-        .shadow(color: HomePalette.primary.opacity(0.08), radius: 8, y: 4)
+        .padding(.horizontal, 2)
     }
 
     private var timeCards: some View {
@@ -173,6 +207,68 @@ struct HomeView: View {
                 accent: HomePalette.primary
             )
         }
+    }
+
+    private var bridgeProgressCard: some View {
+        let progress = appState.dailyBridgeProgress
+
+        return Button {
+            showingBridgeProgress = true
+        } label: {
+            glassCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("연결된 다리")
+                                .font(.system(size: 21, weight: .semibold, design: .serif))
+                                .foregroundStyle(HomePalette.ink)
+                            Text(progress.stageTitle)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(HomePalette.muted)
+                        }
+                        Spacer()
+                        Text("\(progress.points)")
+                            .font(.system(size: 30, weight: .bold, design: .serif))
+                            .foregroundStyle(HomePalette.primary)
+                        Text("/ 100")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(HomePalette.muted)
+                            .padding(.top, 12)
+                    }
+
+                    Image(progress.assetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1.5, contentMode: .fit)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .id(progress.assetName)
+
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(HomePalette.hero.opacity(0.18))
+                            Capsule()
+                                .fill(HomePalette.hero)
+                                .frame(width: proxy.size.width * progress.fraction)
+                        }
+                    }
+                    .frame(height: 10)
+
+                    HStack {
+                        Text("오늘의 행동으로 둘 사이의 다리를 이어요.")
+                            .font(.caption)
+                            .foregroundStyle(HomePalette.muted)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(HomePalette.primary)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("연결된 다리 \(progress.points)점, 상세 보기")
     }
 
     private func timeCard(title: String, user: LongdyUser?, status: String, accent: Color) -> some View {
@@ -428,35 +524,57 @@ struct HomeView: View {
             .shadow(color: HomePalette.primary.opacity(0.05), radius: 16, y: 8)
     }
 
-    private var ddayNumber: String {
-        guard let daysUntilMeet else { return "?" }
-        return "\(abs(daysUntilMeet))"
+    private var previousMeetingEvent: CoupleEvent? {
+        let today = Calendar.current.startOfDay(for: Date())
+        return appState.events
+            .filter { $0.type == .meet && $0.startAt < today }
+            .max { $0.startAt < $1.startAt }
     }
 
-    private var ddayUnit: String {
-        guard let daysUntilMeet else { return "" }
-        return daysUntilMeet == 0 ? "D-day" : "일"
+    private var nextMeetingEvent: CoupleEvent? {
+        let today = Calendar.current.startOfDay(for: Date())
+        return appState.events
+            .filter { $0.type == .meet && $0.startAt >= today }
+            .min { $0.startAt < $1.startAt }
     }
 
-    private var ddaySubtitle: String {
-        guard let daysUntilMeet else { return "다음 만남을 플래너에서 정해보세요" }
-        if daysUntilMeet == 0 { return "드디어 오늘, 다시 만나는 날" }
-        if daysUntilMeet < 0 { return "함께했던 만남으로부터" }
-        return "다시 만날 때까지"
+    private var previousMeetingDate: Date? {
+        if let date = previousMeetingEvent?.startAt { return date }
+        guard let date = appState.couple?.nextMeetDate,
+              date < Calendar.current.startOfDay(for: Date()) else { return nil }
+        return date
     }
 
-    private var daysUntilMeet: Int? {
-        guard let meetDate = appState.couple?.nextMeetDate else { return nil }
-        return Calendar.current.dateComponents(
+    private var nextMeetingDate: Date? {
+        if let date = nextMeetingEvent?.startAt { return date }
+        guard let date = appState.couple?.nextMeetDate,
+              date >= Calendar.current.startOfDay(for: Date()) else { return nil }
+        return date
+    }
+
+    private func meetingCountdown(for date: Date?, isPrevious: Bool) -> String {
+        guard let date else { return "?" }
+        let calendar = Calendar.current
+        let days = calendar.dateComponents(
             [.day],
-            from: Calendar.current.startOfDay(for: Date()),
-            to: Calendar.current.startOfDay(for: meetDate)
-        ).day
+            from: calendar.startOfDay(for: Date()),
+            to: calendar.startOfDay(for: date)
+        ).day ?? 0
+        if days == 0 { return "D-day" }
+        return isPrevious ? "D+\(abs(days))" : "D-\(max(days, 0))"
     }
 
-    private var ddayProgress: CGFloat {
-        guard let daysUntilMeet, daysUntilMeet > 0 else { return daysUntilMeet == nil ? 0 : 1 }
-        return min(max(1 - CGFloat(daysUntilMeet) / 100, 0.08), 1)
+    private func meetingSummary(date: Date?, eventTitle: String?, isPrevious: Bool) -> String {
+        if let eventTitle, !eventTitle.isEmpty { return eventTitle }
+        guard date != nil else {
+            return isPrevious ? "아직 기록된 이전 만남이 없어요" : "다음 만남을 캘린더에서 정해보세요"
+        }
+        return isPrevious ? "함께했던 소중한 만남" : "다시 만나는 날"
+    }
+
+    private func meetingDateText(_ date: Date?) -> String {
+        guard let date else { return "날짜 없음" }
+        return date.formatted(.dateTime.year().month(.wide).day().weekday(.wide))
     }
 
     private var memoryCaption: String {
@@ -706,6 +824,15 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("홈 화면") {
+                    NavigationLink {
+                        HomeCardOrderView()
+                            .environmentObject(appState)
+                    } label: {
+                        Label("카드 순서", systemImage: "rectangle.3.group")
+                    }
+                }
+
                 Section("위치와 날씨") {
                     Button {
                         Task {
@@ -818,6 +945,34 @@ struct SettingsView: View {
             }
             .onChange(of: appState.currentProfile?.friendlyName) { _, name in
                 draftName = name ?? ""
+            }
+        }
+    }
+}
+
+private struct HomeCardOrderView: View {
+    @EnvironmentObject private var appState: AppViewModel
+    @State private var editMode: EditMode = .active
+
+    var body: some View {
+        List {
+            ForEach(appState.homeCardOrder) { card in
+                Label(card.title, systemImage: card.systemImage)
+                    .foregroundStyle(LongdyColors.ink)
+                    .padding(.vertical, 6)
+            }
+            .onMove(perform: appState.moveHomeCard)
+        }
+        .environment(\.editMode, $editMode)
+        .navigationTitle("홈 카드 순서")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    appState.resetHomeCardOrder()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .accessibilityLabel("기본 순서로 초기화")
             }
         }
     }
