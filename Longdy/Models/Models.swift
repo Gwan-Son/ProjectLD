@@ -241,6 +241,17 @@ struct DailyBridgeProgress: Equatable {
         default: "첫 발판을 기다리는 중"
         }
     }
+
+    var assetName: String {
+        switch points {
+        case 100...: "bridge-stage-5"
+        case 75..<100: "bridge-stage-4"
+        case 50..<75: "bridge-stage-3"
+        case 25..<50: "bridge-stage-2"
+        case 1..<25: "bridge-stage-1"
+        default: "bridge-stage-0"
+        }
+    }
 }
 
 enum BridgeActivityKind: String, Codable {
@@ -253,6 +264,36 @@ struct BridgeActivity: Identifiable, Equatable, Codable {
     var kind: BridgeActivityKind
     var dateKey: String
     var createdAt: Date
+}
+
+enum HomeCardKind: String, CaseIterable, Identifiable, Codable {
+    case nextMeeting
+    case connectedBridge
+    case timeAndWeather
+    case mood
+    case recentMoments
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .nextMeeting: "다음 만남"
+        case .connectedBridge: "연결된 다리"
+        case .timeAndWeather: "시간·날씨"
+        case .mood: "기분 공유"
+        case .recentMoments: "최근의 순간들"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .nextMeeting: "calendar.badge.clock"
+        case .connectedBridge: "link"
+        case .timeAndWeather: "clock"
+        case .mood: "face.smiling"
+        case .recentMoments: "photo.on.rectangle"
+        }
+    }
 }
 
 struct WeatherSummary: Equatable, Codable {

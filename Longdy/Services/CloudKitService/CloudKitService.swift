@@ -12,6 +12,7 @@ actor CloudKitService {
         static let coupleEvent = "CoupleEvent"
         static let careItem = "CareItem"
         static let memoryNote = "MemoryNote"
+        static let bridgeActivity = "BridgeActivity"
     }
 
     enum UserProfileField {

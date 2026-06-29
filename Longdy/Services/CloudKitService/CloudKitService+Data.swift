@@ -2,6 +2,66 @@ import CloudKit
 import Foundation
 
 extension CloudKitService {
+    func fetchBridgeActivities(coupleId: String, userIds: [String], dateKey: String) async throws -> [BridgeActivity] {
+        let ref = coupleReference(from: coupleId)
+        var activities: [BridgeActivity] = []
+
+        for userId in userIds {
+            let recordID = CKRecord.ID(
+                recordName: bridgeActivityRecordName(userId: userId, dateKey: dateKey),
+                zoneID: ref.recordID.zoneID
+            )
+            if let record = try await fetchRecord(recordID: recordID, database: ref.database),
+               let activity = Self.decodeBridgeActivity(record) {
+                activities.append(activity)
+            }
+        }
+        return activities
+    }
+
+    func saveCalendarViewedActivity(coupleId: String, userId: String, dateKey: String) async throws -> BridgeActivity {
+        let ref = coupleReference(from: coupleId)
+        let recordID = CKRecord.ID(
+            recordName: bridgeActivityRecordName(userId: userId, dateKey: dateKey),
+            zoneID: ref.recordID.zoneID
+        )
+        if let existing = try await fetchRecord(recordID: recordID, database: ref.database),
+           let activity = Self.decodeBridgeActivity(existing) {
+            return activity
+        }
+
+        let now = Date()
+        let record = CKRecord(recordType: RecordType.bridgeActivity, recordID: recordID)
+        attachToCoupleRoot(record, ref: ref)
+        record[SharedField.appleUserId] = userId as CKRecordValue
+        record["kind"] = BridgeActivityKind.calendarViewed.rawValue as CKRecordValue
+        record["dateKey"] = dateKey as CKRecordValue
+        record[SharedField.createdAt] = now as CKRecordValue
+
+        do {
+            let saved = try await save(record, database: ref.database)
+            return Self.decodeBridgeActivity(saved) ?? BridgeActivity(
+                id: recordID.recordName,
+                userId: userId,
+                kind: .calendarViewed,
+                dateKey: dateKey,
+                createdAt: now
+            )
+        } catch let error as CKError where error.code == .serverRecordChanged {
+            guard let existing = try await fetchRecord(recordID: recordID, database: ref.database),
+                  let activity = Self.decodeBridgeActivity(existing) else { throw error }
+            return activity
+        }
+    }
+
+    private func bridgeActivityRecordName(userId: String, dateKey: String) -> String {
+        let safeUserId = userId
+            .unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? String($0) : "-" }
+            .joined()
+        return "bridge-calendar-\(dateKey)-\(safeUserId)"
+    }
+
     func fetchCoupleData(coupleId: String) async throws -> (checkIns: [CheckIn], events: [CoupleEvent], careItems: [CareItem], memories: [MemoryNote]) {
         let ref = coupleReference(from: coupleId)
         async let checkInRecords = queryRecords(type: RecordType.checkIn, coupleId: coupleId, database: ref.database)
@@ -15,12 +75,8 @@ extension CloudKitService {
         let events = try await eventRecords
             .compactMap(Self.decodeEvent)
             .sorted { $0.startAt < $1.startAt }
-        let today = Date()
         let careItems = try await careItemRecords
             .compactMap(Self.decodeCareItem)
-            .filter { item in
-                item.dateKey == Self.dateKey() || Self.careRepeatRule(item.repeatRule, appliesTo: today, createdAt: item.createdAt)
-            }
             .sorted { $0.createdAt < $1.createdAt }
         let memories = try await memoryRecords
             .compactMap(Self.decodeMemory)

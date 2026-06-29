@@ -8,9 +8,11 @@
 import SwiftUI
 import CloudKit
 import UIKit
+import UserNotifications
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
         application.registerForRemoteNotifications()
         return true
     }
@@ -29,15 +31,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return
         }
         Task { @MainActor in
-            NotificationCenter.default.post(name: .longdyDidReceiveCloudKitChange, object: nil)
-            completionHandler(.newData)
+            let changed = await CloudKitChangeCoordinator.shared.handleChange()
+            completionHandler(changed ? .newData : .noData)
         }
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 }
 
 extension Notification.Name {
     static let longdyDidReceivePendingCloudKitShare = Notification.Name("longdyDidReceivePendingCloudKitShare")
-    static let longdyDidReceiveCloudKitChange = Notification.Name("longdyDidReceiveCloudKitChange")
     static let longdyShouldRefreshCoupleData = Notification.Name("longdyShouldRefreshCoupleData")
 }
 
@@ -54,9 +62,6 @@ struct LongdyApp: App {
                     appState.handlePendingCloudKitShare()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .longdyShouldRefreshCoupleData)) { _ in
-                    appState.refreshCoupleData(force: true)
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .longdyDidReceiveCloudKitChange)) { _ in
                     appState.refreshCoupleData(force: true)
                 }
                 .onOpenURL { url in

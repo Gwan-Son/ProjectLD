@@ -151,6 +151,20 @@ extension CloudKitService {
         )
     }
 
+    static func decodeBridgeActivity(_ record: CKRecord) -> BridgeActivity? {
+        guard let userId = record[SharedField.appleUserId] as? String,
+              let kindValue = record["kind"] as? String,
+              let kind = BridgeActivityKind(rawValue: kindValue),
+              let dateKey = record["dateKey"] as? String else { return nil }
+        return BridgeActivity(
+            id: record.recordID.recordName,
+            userId: userId,
+            kind: kind,
+            dateKey: dateKey,
+            createdAt: record[SharedField.createdAt] as? Date ?? Date()
+        )
+    }
+
     private static func cachedAssetURL(from record: CKRecord) -> URL? {
         guard let sourceURL = (record["asset"] as? CKAsset)?.fileURL else { return nil }
         let fileManager = FileManager.default
