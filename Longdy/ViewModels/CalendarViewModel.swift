@@ -78,9 +78,12 @@ final class CalendarViewModel: ObservableObject {
         }
     }
 
-    func updateEvent(coupleId: String?, event: CoupleEvent, title: String, startAt: Date, endAt: Date, type: EventType, memo: String) async -> CoupleEvent? {
+    func updateEvent(coupleId: String?, currentUserId: String?, event: CoupleEvent, title: String, startAt: Date, endAt: Date, type: EventType, memo: String) async -> CoupleEvent? {
         do {
             errorMessage = nil
+            guard event.ownerUserId == currentUserId else {
+                throw LongdyError.invalidInput("상대가 등록한 일정은 수정할 수 없어요.")
+            }
             guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LongdyError.invalidInput("일정 제목이 필요해요.") }
             guard endAt >= startAt else { throw LongdyError.invalidInput("끝 시간이 시작 시간보다 빠를 수 없어요.") }
             guard let coupleId else { throw LongdyError.missingCouple }
@@ -93,9 +96,12 @@ final class CalendarViewModel: ObservableObject {
         }
     }
 
-    func deleteEvent(coupleId: String?, event: CoupleEvent) async -> Bool {
+    func deleteEvent(coupleId: String?, currentUserId: String?, event: CoupleEvent) async -> Bool {
         do {
             errorMessage = nil
+            guard event.ownerUserId == currentUserId else {
+                throw LongdyError.invalidInput("상대가 등록한 일정은 삭제할 수 없어요.")
+            }
             guard let coupleId else { throw LongdyError.missingCouple }
             try await service.deleteEvent(coupleId: coupleId, eventId: event.id)
             NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)

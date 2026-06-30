@@ -23,6 +23,10 @@ extension CloudKitService {
             latitude: record[UserProfileField.latitude] as? Double,
             longitude: record[UserProfileField.longitude] as? Double,
             locationUpdatedAt: record[UserProfileField.locationUpdatedAt] as? Date,
+            profilePhotoURL: Self.cachedProfilePhotoURL(
+                from: record,
+                field: UserProfileField.profilePhotoAsset
+            )?.absoluteString,
             partnerCoupleId: stringValue(record[UserProfileField.coupleRootRecordName]),
             createdAt: record[UserProfileField.createdAt] as? Date ?? Date()
         )
@@ -88,6 +92,10 @@ extension CloudKitService {
             latitude: record[fields.latitude] as? Double,
             longitude: record[fields.longitude] as? Double,
             locationUpdatedAt: record[fields.locationUpdatedAt] as? Date,
+            profilePhotoURL: Self.cachedProfilePhotoURL(
+                from: record,
+                field: fields.profilePhotoAsset
+            )?.absoluteString,
             partnerCoupleId: coupleId,
             createdAt: record[CoupleRootField.createdAt] as? Date ?? Date()
         )
@@ -144,9 +152,10 @@ extension CloudKitService {
         return MemoryNote(
             id: record.recordID.recordName,
             userId: userId,
-            text: record["text"] as? String ?? "",
-            storageURL: cachedAssetURL(from: record)?.absoluteString,
-            dateKey: record["dateKey"] as? String ?? Self.dateKey(for: record[SharedField.createdAt] as? Date ?? Date()),
+            text: record[MemoryField.text] as? String ?? "",
+            storageURL: cachedMemoryAssetURL(from: record, field: MemoryField.asset, folder: "Originals")?.absoluteString,
+            thumbnailURL: cachedMemoryAssetURL(from: record, field: MemoryField.thumbnailAsset, folder: "Thumbnails")?.absoluteString,
+            dateKey: record[MemoryField.dateKey] as? String ?? Self.dateKey(for: record[SharedField.createdAt] as? Date ?? Date()),
             createdAt: record[SharedField.createdAt] as? Date ?? Date()
         )
     }
@@ -165,8 +174,8 @@ extension CloudKitService {
         )
     }
 
-    private static func cachedAssetURL(from record: CKRecord) -> URL? {
-        guard let sourceURL = (record["asset"] as? CKAsset)?.fileURL else { return nil }
+    private static func cachedProfilePhotoURL(from record: CKRecord, field: String) -> URL? {
+        guard let sourceURL = (record[field] as? CKAsset)?.fileURL else { return nil }
         let fileManager = FileManager.default
         do {
             let directory = try fileManager.url(
@@ -174,29 +183,72 @@ extension CloudKitService {
                 in: .userDomainMask,
                 appropriateFor: nil,
                 create: true
-            ).appendingPathComponent("MemoryAssets", isDirectory: true)
+            ).appendingPathComponent("ProfilePhotos", isDirectory: true)
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-            let cacheKey = assetCacheKey(for: record)
-            removeOldCachedAssets(for: record.recordID.recordName, keeping: cacheKey, in: directory)
-            let destinationURL = directory.appendingPathComponent("\(cacheKey).jpg")
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                return destinationURL
+
+            let prefix = "\(record.recordID.recordName)-\(field)-"
+            let rawTag = record.recordChangeTag
+                ?? record.modificationDate.map { String(Int($0.timeIntervalSince1970 * 1000)) }
+                ?? UUID().uuidString
+            let safeTag = rawTag
+                .replacingOccurrences(of: "/", with: "-")
+                .replacingOccurrences(of: ":", with: "-")
+            let destinationURL = directory.appendingPathComponent("\(prefix)\(safeTag).jpg")
+
+            let oldURLs = try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil
+            ).filter {
+                $0.lastPathComponent.hasPrefix(prefix) && $0 != destinationURL
             }
-            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+            oldURLs.forEach { try? fileManager.removeItem(at: $0) }
+
+            if !fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.copyItem(at: sourceURL, to: destinationURL)
+            }
             return destinationURL
         } catch {
             return sourceURL
         }
     }
 
-    private static func assetCacheKey(for record: CKRecord) -> String {
+    private static func cachedMemoryAssetURL(from record: CKRecord, field: String, folder: String) -> URL? {
+        let fileManager = FileManager.default
+        do {
+            let directory = try fileManager.url(
+                for: .cachesDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+                .appendingPathComponent("MemoryAssets", isDirectory: true)
+                .appendingPathComponent(folder, isDirectory: true)
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let cacheKey = assetCacheKey(for: record, field: field)
+            let destinationURL = directory.appendingPathComponent("\(cacheKey).jpg")
+
+            if let sourceURL = (record[field] as? CKAsset)?.fileURL {
+                removeOldCachedAssets(for: record.recordID.recordName, keeping: cacheKey, in: directory)
+                if !fileManager.fileExists(atPath: destinationURL.path) {
+                    try fileManager.copyItem(at: sourceURL, to: destinationURL)
+                }
+            }
+
+            guard fileManager.fileExists(atPath: destinationURL.path) else { return nil }
+            return destinationURL
+        } catch {
+            return (record[field] as? CKAsset)?.fileURL
+        }
+    }
+
+    private static func assetCacheKey(for record: CKRecord, field: String) -> String {
         let rawTag = record.recordChangeTag
             ?? record.modificationDate.map { String(Int($0.timeIntervalSince1970 * 1000)) }
             ?? UUID().uuidString
         let safeTag = rawTag
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
-        return "\(record.recordID.recordName)-\(safeTag)"
+        return "\(record.recordID.recordName)-\(field)-\(safeTag)"
     }
 
     private static func removeOldCachedAssets(for recordName: String, keeping cacheKey: String, in directory: URL) {

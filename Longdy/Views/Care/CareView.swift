@@ -5,6 +5,7 @@ struct CareView: View {
     @EnvironmentObject private var appState: AppViewModel
     @StateObject private var viewModel = CareViewModel()
     @State private var showingIconPicker = false
+    @State private var showingAddCare = false
     @State private var editingItem: CareItem?
 
     private var allCareItems: [CareItem] {
@@ -29,26 +30,71 @@ struct CareView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 28) {
-                    careHero
-                    todayCareList
-                    pastCareLink
-                    addCareCard
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 28) {
+                        careHero
+                        todayCareList
+                        pastCareLink
 
-                    if let error = viewModel.errorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let error = viewModel.errorMessage {
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+                    .padding(.bottom, 92)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 32)
+
+                Button {
+                    showingAddCare = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundStyle(CarePalette.ink)
+                        .frame(width: 56, height: 56)
+                        .background(
+                            LinearGradient(
+                                colors: [CalendarPalette.hero, CalendarPalette.secondaryContainer],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(Circle())
+                        .shadow(color: CarePalette.primary.opacity(0.22), radius: 14, y: 7)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("챙김 항목 추가")
+                .padding(.trailing, 20)
+                .padding(.bottom, 18)
             }
             .toolbar(.hidden, for: .navigationBar)
             .background(CarePalette.background.ignoresSafeArea())
+            .sheet(isPresented: $showingAddCare) {
+                NavigationStack {
+                    ScrollView(showsIndicators: false) {
+                        addCareCard
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 18)
+                    }
+                    .background(CarePalette.background.ignoresSafeArea())
+                    .navigationTitle("새로운 챙김")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("닫기") {
+                                showingAddCare = false
+                            }
+                            .foregroundStyle(CarePalette.primary)
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(item: $editingItem) { item in
                 CareItemEditorView(item: item, coupleId: appState.coupleId, viewModel: viewModel)
             }
@@ -99,12 +145,13 @@ struct CareView: View {
                             ownerName: ownerName(for: item),
                             ownerInitial: ownerInitial(for: item),
                             tint: rowTint(for: index),
-                            canEdit: item.userId == appState.userId
+                            canEdit: item.userId == appState.userId && item.effectiveSyncState == .synced,
+                            onRetry: retryAction(for: item)
                         ) {
                             toggleCareItem(item)
                         }
                         .contextMenu {
-                            if item.userId == appState.userId {
+                            if item.userId == appState.userId && item.effectiveSyncState == .synced {
                                 Button {
                                     editingItem = item
                                 } label: {
@@ -135,7 +182,7 @@ struct CareView: View {
                 .padding(.horizontal, 14)
                 .frame(height: 46)
                 .background(CarePalette.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(Capsule())
                 .overlay(alignment: .trailing) {
                     Image(systemName: "pencil")
                         .foregroundStyle(CarePalette.outline)
@@ -192,12 +239,18 @@ struct CareView: View {
                 .textFieldStyle(.plain)
                 .padding(14)
                 .background(CarePalette.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(Capsule())
 
             Button {
-                Task {
-                    if let item = await viewModel.addCareItem(userId: appState.userId, coupleId: appState.coupleId) {
-                        appState.applySavedCareItem(item)
+                if let item = viewModel.makePendingCareItem(userId: appState.userId) {
+                    appState.applySavedCareItem(item)
+                    showingAddCare = false
+                    Task {
+                        let savedItem = await viewModel.persistCareItem(
+                            coupleId: appState.coupleId,
+                            item: item
+                        )
+                        appState.applySavedCareItem(savedItem)
                     }
                 }
             } label: {
@@ -222,30 +275,19 @@ struct CareView: View {
             PastCareView()
                 .environmentObject(appState)
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(CarePalette.primary)
-                    .frame(width: 38, height: 38)
-                    .background(CarePalette.primaryContainer.opacity(0.18))
-                    .clipShape(Circle())
-                Text("지난 챙김 보기")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CarePalette.ink)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CarePalette.outline)
-            }
-            .padding(16)
-            .background(CarePalette.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(CarePalette.line.opacity(0.45), lineWidth: 1)
-            }
+            Text("지난 챙김 보기")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CarePalette.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(CarePalette.secondary.opacity(0.16))
+                .clipShape(Capsule())
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("지난 챙김 보기")
     }
 
     private func ownerName(for item: CareItem) -> String {
@@ -276,12 +318,42 @@ struct CareView: View {
         }
     }
 
+    private func retryCareItem(_ item: CareItem) {
+        var pendingItem = item
+        pendingItem.syncState = .pending
+        appState.applySavedCareItem(pendingItem)
+        Task {
+            let savedItem = await viewModel.persistCareItem(
+                coupleId: appState.coupleId,
+                item: pendingItem
+            )
+            appState.applySavedCareItem(savedItem)
+        }
+    }
+
+    private func retryAction(for item: CareItem) -> (() -> Void)? {
+        switch item.effectiveSyncState {
+        case .failed:
+            return { retryCareItem(item) }
+        case .deleteFailed:
+            return { deleteCareItem(item) }
+        default:
+            return nil
+        }
+    }
+
     private func deleteCareItem(_ item: CareItem) {
-        appState.removeCareItem(item)
+        var deletingItem = item
+        deletingItem.syncState = .deleting
+        appState.applySavedCareItem(deletingItem)
         Task {
             let succeeded = await viewModel.deleteCareItem(coupleId: appState.coupleId, item: item)
-            if !succeeded {
-                appState.applySavedCareItem(item)
+            if succeeded {
+                appState.removeCareItem(item)
+            } else {
+                var failedItem = item
+                failedItem.syncState = .deleteFailed
+                appState.applySavedCareItem(failedItem)
             }
         }
     }
@@ -818,6 +890,7 @@ struct CareItemRow: View {
     let ownerInitial: String
     let tint: Color
     let canEdit: Bool
+    let onRetry: (() -> Void)?
     let onToggle: () -> Void
 
     var body: some View {
@@ -857,6 +930,38 @@ struct CareItemRow: View {
                         .font(.caption)
                         .foregroundStyle(CarePalette.muted)
                         .lineLimit(2)
+                }
+
+                if item.effectiveSyncState == .pending {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("iCloud에 저장 중")
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CarePalette.outline)
+                } else if item.effectiveSyncState == .failed, let onRetry {
+                    Button(action: onRetry) {
+                        Label("저장 실패 · 재시도", systemImage: "arrow.clockwise")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                } else if item.effectiveSyncState == .deleting {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("iCloud에서 삭제 중")
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CarePalette.outline)
+                } else if item.effectiveSyncState == .deleteFailed, let onRetry {
+                    Button(action: onRetry) {
+                        Label("삭제 실패 · 재시도", systemImage: "arrow.clockwise")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -904,7 +1009,7 @@ private struct CarePrimaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 13)
             .background(CarePalette.primary.opacity(configuration.isPressed ? 0.82 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(Capsule())
     }
 }
 
@@ -914,6 +1019,6 @@ private extension View {
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
             .background(CarePalette.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(Capsule())
     }
 }

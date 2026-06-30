@@ -123,4 +123,72 @@ extension CloudKitService {
         try await updateCoupleMemberSnapshotIfNeeded(user: user)
         return user
     }
+
+    func updateUserProfilePhoto(session: AppleSession, fileData: Data?) async throws -> LongdyUser {
+        guard let record = try await fetchRecord(recordID: currentUserProfileRecordID) else {
+            throw LongdyError.missingUser
+        }
+
+        var temporaryURL: URL?
+        if let fileData {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("profile-\(UUID().uuidString)")
+                .appendingPathExtension("jpg")
+            try fileData.write(to: url, options: .atomic)
+            temporaryURL = url
+            record[UserProfileField.profilePhotoAsset] = CKAsset(fileURL: url)
+        } else {
+            record[UserProfileField.profilePhotoAsset] = nil
+        }
+        record[UserProfileField.updatedAt] = Date() as CKRecordValue
+
+        defer {
+            if let temporaryURL {
+                try? FileManager.default.removeItem(at: temporaryURL)
+            }
+        }
+
+        let savedRecord = try await save(record)
+        let user = decodeUserProfile(from: savedRecord, session: session)
+        try await updateCoupleMemberProfilePhotoIfNeeded(user: user, fileData: fileData)
+        return user
+    }
+
+    private func updateCoupleMemberProfilePhotoIfNeeded(user: LongdyUser, fileData: Data?) async throws {
+        guard let coupleId = user.partnerCoupleId else { return }
+        let ref = coupleReference(from: coupleId)
+        guard let rootRecord = try await fetchRecord(recordID: ref.recordID, database: ref.database) else { return }
+        let ownerId = stringValue(rootRecord[CoupleRootField.ownerAppleUserId])
+        let partnerId = stringValue(rootRecord[CoupleRootField.partnerAppleUserId])
+
+        let prefix: MemberSnapshotPrefix
+        if ownerId == user.id {
+            prefix = .owner
+        } else if partnerId == user.id {
+            prefix = .partner
+        } else {
+            return
+        }
+
+        let photoField = memberSnapshotFields(for: prefix).profilePhotoAsset
+        var temporaryURL: URL?
+        if let fileData {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("shared-profile-\(UUID().uuidString)")
+                .appendingPathExtension("jpg")
+            try fileData.write(to: url, options: .atomic)
+            temporaryURL = url
+            rootRecord[photoField] = CKAsset(fileURL: url)
+        } else {
+            rootRecord[photoField] = nil
+        }
+        rootRecord[CoupleRootField.updatedAt] = Date() as CKRecordValue
+
+        defer {
+            if let temporaryURL {
+                try? FileManager.default.removeItem(at: temporaryURL)
+            }
+        }
+        _ = try await save(rootRecord, database: ref.database)
+    }
 }

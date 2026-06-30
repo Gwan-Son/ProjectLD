@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -36,7 +37,13 @@ struct HomeView: View {
                         .scaledToFit()
                         .padding(6)
                         .frame(width: 60, height: 60)
-                        .background(HomePalette.primary)
+                        .background(
+                            LinearGradient(
+                                colors: [CalendarPalette.hero, CalendarPalette.secondaryContainer],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .clipShape(Circle())
                         .shadow(color: HomePalette.primary.opacity(0.28), radius: 12, y: 6)
                 }
@@ -474,7 +481,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private var memoryArtwork: some View {
-        if let urlString = appState.recentMemory?.storageURL,
+        if let urlString = appState.recentMemory?.thumbnailURL,
            let url = URL(string: urlString) {
             HomeMemoryArtwork(url: url)
         } else {
@@ -782,11 +789,15 @@ struct SettingsView: View {
     @State private var showingWeatherRefreshAlert = false
     @State private var weatherRefreshSucceeded = false
     @State private var draftName = ""
+    @StateObject private var profilePhotoViewModel = ProfilePhotoViewModel()
+    @State private var selectedProfilePhoto: PhotosPickerItem?
+    @State private var showingProfilePhotoRemovalAlert = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("내 정보") {
+                    profilePhotoControls
                     VStack(alignment: .leading, spacing: 8) {
                         Text("이름")
                             .font(.caption.bold())
@@ -933,6 +944,14 @@ struct SettingsView: View {
             } message: {
                 Text("이 기기에서 커플 공간 연결이 해제돼요. 다시 연결하려면 초대 코드를 새로 만들어야 해요.")
             }
+            .alert("프로필 사진을 제거할까요?", isPresented: $showingProfilePhotoRemovalAlert) {
+                Button("취소", role: .cancel) {}
+                Button("제거", role: .destructive) {
+                    removeProfilePhoto()
+                }
+            } message: {
+                Text("제거하면 상대 화면에서도 기본 이니셜로 표시돼요.")
+            }
             .alert(weatherRefreshSucceeded ? "새로고침 완료" : "새로고침 실패", isPresented: $showingWeatherRefreshAlert) {
                 Button("확인", role: .cancel) {}
             } message: {
@@ -943,6 +962,84 @@ struct SettingsView: View {
             }
             .onChange(of: appState.currentProfile?.friendlyName) { _, name in
                 draftName = name ?? ""
+            }
+            .onChange(of: selectedProfilePhoto) { _, item in
+                loadAndSaveProfilePhoto(item)
+            }
+        }
+    }
+
+    private var profilePhotoControls: some View {
+        HStack(spacing: 16) {
+            BridgeAvatar(
+                user: appState.currentProfile,
+                fallback: "나",
+                size: 72,
+                strokeColor: HomePalette.hero
+            )
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("프로필 사진")
+                    .font(.subheadline.weight(.semibold))
+
+                if profilePhotoViewModel.isSaving {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("저장 중")
+                            .font(.caption)
+                            .foregroundStyle(LongdyColors.muted)
+                    }
+                } else if appState.currentProfile?.profilePhotoURL == nil {
+                    PhotosPicker(selection: $selectedProfilePhoto, matching: .images) {
+                        Label("사진 등록", systemImage: "photo.badge.plus")
+                    }
+                } else {
+                    HStack(spacing: 14) {
+                        PhotosPicker(selection: $selectedProfilePhoto, matching: .images) {
+                            Label("수정", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            showingProfilePhotoRemovalAlert = true
+                        } label: {
+                            Label("제거", systemImage: "trash")
+                        }
+                    }
+                }
+
+                if let error = profilePhotoViewModel.errorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func loadAndSaveProfilePhoto(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            defer { selectedProfilePhoto = nil }
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    throw LongdyError.invalidInput("사진을 불러오지 못했어요.")
+                }
+                if let profile = await profilePhotoViewModel.save(
+                    session: appState.appleSession,
+                    photoData: data
+                ) {
+                    appState.applyUpdatedProfile(profile)
+                }
+            } catch {
+                profilePhotoViewModel.errorMessage = error.longdyUserMessage
+            }
+        }
+    }
+
+    private func removeProfilePhoto() {
+        Task {
+            if let profile = await profilePhotoViewModel.remove(session: appState.appleSession) {
+                appState.applyUpdatedProfile(profile)
             }
         }
     }

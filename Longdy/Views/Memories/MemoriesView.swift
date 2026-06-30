@@ -16,7 +16,7 @@ struct MemoriesView: View {
     @State private var photoSaveAlertMessage = ""
 
     private var todayPhotos: [MemoryNote] {
-        appState.memories
+        viewModel.memories
             .filter { $0.dateKey == appState.todayDateKey }
             .sorted { $0.createdAt > $1.createdAt }
     }
@@ -32,7 +32,7 @@ struct MemoriesView: View {
     }
 
     private var photoHistory: [MemoryNote] {
-        let sortedPhotos = appState.memories
+        let sortedPhotos = viewModel.memories
             .sorted { $0.createdAt > $1.createdAt }
         var seenKeys: Set<String> = []
         return sortedPhotos.filter { memory in
@@ -56,7 +56,11 @@ struct MemoriesView: View {
             }
             .navigationTitle("오늘의 한 장")
             .onAppear {
+                viewModel.seedMemories(appState.memories)
                 appState.refreshCoupleData()
+            }
+            .task(id: appState.coupleId) {
+                await viewModel.loadFirstPage(coupleId: appState.coupleId)
             }
             .task {
                 while !Task.isCancelled {
@@ -76,19 +80,22 @@ struct MemoriesView: View {
                     await loadSelectedPhoto(newValue)
                 }
             }
+            .onChange(of: appState.memories) { _, memories in
+                viewModel.mergeRecentMemories(memories)
+            }
             .toolbar(.hidden, for: .navigationBar)
             .background(PhotoPalette.background.ignoresSafeArea())
-            .overlay {
-                if viewModel.isSaving {
-                    PhotoSavingOverlay(message: "사진 업로드 중")
-                }
-            }
             .sheet(item: $selectedMemory) { memory in
-                PhotoDetailView(memory: memory, ownerName: ownerName(for: memory))
+                PhotoDetailView(
+                    memory: memory,
+                    ownerName: ownerName(for: memory),
+                    coupleId: appState.coupleId
+                )
             }
             .sheet(item: $editingMemory) { memory in
                 PhotoEditorView(memory: memory, coupleId: appState.coupleId, viewModel: viewModel) { updatedMemory in
                     appState.applySavedMemory(updatedMemory)
+                    viewModel.applySavedMemory(updatedMemory)
                     photoSaveAlertMessage = "오늘의 한 장을 수정했어요."
                     showingPhotoSaveAlert = true
                 }
@@ -143,16 +150,30 @@ struct MemoriesView: View {
                 let spacing: CGFloat = 12
                 let slotWidth = max((proxy.size.width - spacing) / 2, 0)
                 HStack(spacing: spacing) {
-                    TodayPhotoSlot(title: "나", memory: myTodayPhoto, width: slotWidth)
+                    TodayPhotoSlot(
+                        title: "나",
+                        memory: myTodayPhoto,
+                        width: slotWidth,
+                        onRetry: myTodayPhoto.flatMap(photoRetryAction)
+                    )
                         .onTapGesture {
-                            if let myTodayPhoto { selectedMemory = myTodayPhoto }
+                            if let myTodayPhoto, myTodayPhoto.effectiveSyncState == .synced {
+                                selectedMemory = myTodayPhoto
+                            }
                         }
                         .contextMenu {
-                            if let myTodayPhoto, myTodayPhoto.userId == appState.userId {
+                            if let myTodayPhoto,
+                               myTodayPhoto.userId == appState.userId,
+                               myTodayPhoto.effectiveSyncState == .synced {
                                 memoryMenu(for: myTodayPhoto)
                             }
                         }
-                    TodayPhotoSlot(title: appState.partner?.friendlyName ?? "상대", memory: partnerTodayPhoto, width: slotWidth)
+                    TodayPhotoSlot(
+                        title: appState.partner?.friendlyName ?? "상대",
+                        memory: partnerTodayPhoto,
+                        width: slotWidth,
+                        onRetry: nil
+                    )
                         .onTapGesture {
                             if let partnerTodayPhoto { selectedMemory = partnerTodayPhoto }
                         }
@@ -180,13 +201,38 @@ struct MemoriesView: View {
                         .background(PhotoPalette.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                    Button {
-                        editingMemory = myTodayPhoto
-                    } label: {
-                        Label("수정하기", systemImage: "pencil")
-                            .frame(maxWidth: .infinity)
+                    if myTodayPhoto.effectiveSyncState == .synced {
+                        Button {
+                            editingMemory = myTodayPhoto
+                        } label: {
+                            Label("수정하기", systemImage: "pencil")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PhotoPrimaryButtonStyle())
+                    } else if myTodayPhoto.effectiveSyncState == .failed {
+                        Button {
+                            retryPhoto(myTodayPhoto)
+                        } label: {
+                            Label("업로드 다시 시도", systemImage: "arrow.clockwise")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PhotoPrimaryButtonStyle())
+                    } else if myTodayPhoto.effectiveSyncState == .deleteFailed {
+                        Button {
+                            deletePhoto(myTodayPhoto)
+                        } label: {
+                            Label("삭제 다시 시도", systemImage: "arrow.clockwise")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PhotoPrimaryButtonStyle())
+                    } else {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text(myTodayPhoto.effectiveSyncState == .deleting ? "iCloud에서 삭제 중" : "iCloud에 업로드 중")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(PhotoPalette.muted)
                     }
-                    .buttonStyle(PhotoPrimaryButtonStyle())
                 }
             } else {
                 PhotoPickerPreviewButton(
@@ -203,7 +249,7 @@ struct MemoriesView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 Button {
-                    Task { await saveTodayPhoto() }
+                    saveTodayPhoto()
                 } label: {
                     if viewModel.isSaving {
                         ProgressView()
@@ -250,12 +296,18 @@ struct MemoriesView: View {
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     ForEach(photoHistory) { memory in
-                        PhotoHistoryCell(memory: memory, ownerName: ownerName(for: memory))
+                        PhotoHistoryCell(
+                            memory: memory,
+                            ownerName: ownerName(for: memory),
+                            onRetry: memory.userId == appState.userId ? photoRetryAction(for: memory) : nil
+                        )
                             .onTapGesture {
-                                selectedMemory = memory
+                                if memory.effectiveSyncState == .synced {
+                                    selectedMemory = memory
+                                }
                             }
                             .contextMenu {
-                                if memory.userId == appState.userId {
+                                if memory.userId == appState.userId && memory.effectiveSyncState == .synced {
                                     memoryMenu(for: memory)
                                 }
                             }
@@ -263,17 +315,70 @@ struct MemoriesView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 12)
+
+                if viewModel.hasMorePages {
+                    Button {
+                        Task { await viewModel.loadNextPage(coupleId: appState.coupleId) }
+                    } label: {
+                        if viewModel.isLoadingPage {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Label("더 불러오기", systemImage: "chevron.down")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(PhotoPrimaryButtonStyle())
+                    .disabled(viewModel.isLoadingPage)
+                    .padding(.horizontal, 12)
+                }
             }
         }
     }
 
-    private func saveTodayPhoto() async {
-        if let memory = await viewModel.saveTodayPhoto(userId: appState.userId, coupleId: appState.coupleId, selectedPhotoData: selectedPhotoData) {
-            selectedPhoto = nil
-            selectedPhotoData = nil
-            appState.applySavedMemory(memory)
-            photoSaveAlertMessage = "오늘의 한 장을 업로드했어요."
-            showingPhotoSaveAlert = true
+    private func saveTodayPhoto() {
+        guard let memory = viewModel.makePendingTodayPhoto(
+            userId: appState.userId,
+            selectedPhotoData: selectedPhotoData
+        ) else { return }
+        selectedPhoto = nil
+        selectedPhotoData = nil
+        appState.applySavedMemory(memory)
+        viewModel.applySavedMemory(memory)
+        uploadPhoto(memory)
+    }
+
+    private func retryPhoto(_ memory: MemoryNote) {
+        var pendingMemory = memory
+        pendingMemory.syncState = .pending
+        appState.applySavedMemory(pendingMemory)
+        viewModel.applySavedMemory(pendingMemory)
+        uploadPhoto(pendingMemory)
+    }
+
+    private func uploadPhoto(_ memory: MemoryNote) {
+        Task {
+            let savedMemory = await viewModel.persistPendingPhoto(
+                coupleId: appState.coupleId,
+                memory: memory
+            )
+            appState.applySavedMemory(savedMemory)
+            viewModel.applySavedMemory(savedMemory)
+            if savedMemory.effectiveSyncState == .synced {
+                photoSaveAlertMessage = "오늘의 한 장을 업로드했어요."
+                showingPhotoSaveAlert = true
+            }
+        }
+    }
+
+    private func photoRetryAction(for memory: MemoryNote) -> (() -> Void)? {
+        switch memory.effectiveSyncState {
+        case .failed:
+            return { retryPhoto(memory) }
+        case .deleteFailed:
+            return { deletePhoto(memory) }
+        default:
+            return nil
         }
     }
 
@@ -316,14 +421,27 @@ struct MemoriesView: View {
 
     private func deletePendingMemory() {
         guard let memory = memoryPendingDelete else { return }
-        appState.removeMemory(memory)
+        deletePhoto(memory)
+        memoryPendingDelete = nil
+    }
+
+    private func deletePhoto(_ memory: MemoryNote) {
+        var deletingMemory = memory
+        deletingMemory.syncState = .deleting
+        appState.applySavedMemory(deletingMemory)
+        viewModel.applySavedMemory(deletingMemory)
         Task {
             let succeeded = await viewModel.deleteTodayPhoto(coupleId: appState.coupleId, memory: memory)
-            if !succeeded {
-                appState.applySavedMemory(memory)
+            if succeeded {
+                appState.removeMemory(memory)
+                viewModel.removeMemory(memory)
+            } else {
+                var failedMemory = memory
+                failedMemory.syncState = .deleteFailed
+                appState.applySavedMemory(failedMemory)
+                viewModel.applySavedMemory(failedMemory)
             }
         }
-        memoryPendingDelete = nil
     }
 }
 
@@ -331,6 +449,7 @@ private struct TodayPhotoSlot: View {
     let title: String
     let memory: MemoryNote?
     let width: CGFloat
+    let onRetry: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -339,6 +458,7 @@ private struct TodayPhotoSlot: View {
                     .fill(PhotoPalette.surface)
                 if let memory {
                     MemoryImage(memory: memory)
+                    PhotoSyncStatusOverlay(memory: memory, onRetry: onRetry)
                 } else {
                     VStack(spacing: 8) {
                         Image("empty-state")
@@ -375,14 +495,18 @@ private struct TodayPhotoSlot: View {
 private struct PhotoHistoryCell: View {
     let memory: MemoryNote
     let ownerName: String
+    let onRetry: (() -> Void)?
 
     var body: some View {
         GeometryReader { proxy in
             VStack(alignment: .leading, spacing: 8) {
-                MemoryImage(memory: memory, contentMode: .fill)
-                    .frame(width: proxy.size.width, height: 150)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                ZStack(alignment: .bottomTrailing) {
+                    MemoryImage(memory: memory, contentMode: .fill)
+                    PhotoSyncStatusOverlay(memory: memory, onRetry: onRetry)
+                }
+                .frame(width: proxy.size.width, height: 150)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text(ownerName)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PhotoPalette.ink)
@@ -401,12 +525,58 @@ private struct PhotoHistoryCell: View {
     }
 }
 
+private struct PhotoSyncStatusOverlay: View {
+    let memory: MemoryNote
+    let onRetry: (() -> Void)?
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                if memory.effectiveSyncState == .pending {
+                    Label {
+                        Text("업로드 중")
+                    } icon: {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(.white)
+                    }
+                    .syncBadgeStyle()
+                } else if memory.effectiveSyncState == .failed, let onRetry {
+                    Button(action: onRetry) {
+                        Label("재시도", systemImage: "arrow.clockwise")
+                            .syncBadgeStyle()
+                    }
+                    .buttonStyle(.plain)
+                } else if memory.effectiveSyncState == .deleting {
+                    Label {
+                        Text("삭제 중")
+                    } icon: {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(.white)
+                    }
+                    .syncBadgeStyle()
+                } else if memory.effectiveSyncState == .deleteFailed, let onRetry {
+                    Button(action: onRetry) {
+                        Label("삭제 재시도", systemImage: "arrow.clockwise")
+                            .syncBadgeStyle()
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(8)
+        }
+    }
+}
+
 private struct MemoryImage: View {
     let memory: MemoryNote
     var contentMode: ContentMode = .fill
 
     var body: some View {
-        if let urlString = memory.storageURL, let url = URL(string: urlString) {
+        if let urlString = memory.thumbnailURL, let url = URL(string: urlString) {
             if url.isFileURL,
                let data = try? Data(contentsOf: url),
                let uiImage = UIImage(data: data) {
@@ -497,8 +667,15 @@ private struct PhotoPickerPreviewButton: View {
 
 private struct PhotoDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    let memory: MemoryNote
     let ownerName: String
+    let coupleId: String?
+    @StateObject private var viewModel: MemoryDetailViewModel
+
+    init(memory: MemoryNote, ownerName: String, coupleId: String?) {
+        self.ownerName = ownerName
+        self.coupleId = coupleId
+        _viewModel = StateObject(wrappedValue: MemoryDetailViewModel(memory: memory))
+    }
 
     var body: some View {
         NavigationStack {
@@ -514,11 +691,11 @@ private struct PhotoDetailView: View {
                         Text(ownerName)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(PhotoPalette.secondary)
-                        Text(memory.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        Text(viewModel.memory.createdAt.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption2)
                             .foregroundStyle(PhotoPalette.muted)
-                        if !memory.text.isEmpty {
-                            Text(memory.text)
+                        if !viewModel.memory.text.isEmpty {
+                            Text(viewModel.memory.text)
                                 .font(.body)
                                 .foregroundStyle(PhotoPalette.ink)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -539,20 +716,37 @@ private struct PhotoDetailView: View {
                 }
             }
             .background(PhotoPalette.background.ignoresSafeArea())
+            .task {
+                await viewModel.loadOriginal(coupleId: coupleId)
+            }
         }
     }
 
     @ViewBuilder
     private var detailImage: some View {
-        if let urlString = memory.storageURL, let url = URL(string: urlString) {
-            AsyncImage(url: url) { image in
-                image
+        if let urlString = viewModel.memory.storageURL,
+           let url = URL(string: urlString) {
+            if url.isFileURL,
+               let data = try? Data(contentsOf: url),
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-            } placeholder: {
-                ProgressView()
-                    .tint(PhotoPalette.primary)
+            } else {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFit()
+                } placeholder: {
+                    ProgressView()
+                        .tint(PhotoPalette.primary)
+                }
             }
+        } else if viewModel.isLoading {
+            ProgressView()
+                .tint(PhotoPalette.primary)
+        } else if let error = viewModel.errorMessage {
+            ContentUnavailableView("사진을 불러오지 못했어요", systemImage: "photo", description: Text(error))
         } else {
             Rectangle().fill(PhotoPalette.line.opacity(0.35))
         }
@@ -688,5 +882,17 @@ private struct PhotoPrimaryButtonStyle: ButtonStyle {
             .padding(.vertical, 14)
             .background(PhotoPalette.primary.opacity(configuration.isPressed ? 0.78 : 1))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private extension View {
+    func syncBadgeStyle() -> some View {
+        self
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(.black.opacity(0.58))
+            .clipShape(Capsule())
     }
 }

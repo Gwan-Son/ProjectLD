@@ -212,9 +212,15 @@ extension CloudKitService {
         record[fields.latitude] = user.latitude as CKRecordValue?
         record[fields.longitude] = user.longitude as CKRecordValue?
         record[fields.locationUpdatedAt] = user.locationUpdatedAt as CKRecordValue?
+        if record[fields.profilePhotoAsset] == nil,
+           let urlText = user.profilePhotoURL,
+           let url = URL(string: urlText),
+           url.isFileURL {
+            record[fields.profilePhotoAsset] = CKAsset(fileURL: url)
+        }
     }
 
-    func memberSnapshotFields(for prefix: MemberSnapshotPrefix) -> (displayName: String, nickname: String, cityName: String, timezoneId: String, latitude: String, longitude: String, locationUpdatedAt: String) {
+    func memberSnapshotFields(for prefix: MemberSnapshotPrefix) -> (displayName: String, nickname: String, cityName: String, timezoneId: String, latitude: String, longitude: String, locationUpdatedAt: String, profilePhotoAsset: String) {
         switch prefix {
         case .owner:
             return (
@@ -224,7 +230,8 @@ extension CloudKitService {
                 CoupleRootField.ownerTimezoneId,
                 CoupleRootField.ownerLatitude,
                 CoupleRootField.ownerLongitude,
-                CoupleRootField.ownerLocationUpdatedAt
+                CoupleRootField.ownerLocationUpdatedAt,
+                CoupleRootField.ownerProfilePhotoAsset
             )
         case .partner:
             return (
@@ -234,7 +241,8 @@ extension CloudKitService {
                 CoupleRootField.partnerTimezoneId,
                 CoupleRootField.partnerLatitude,
                 CoupleRootField.partnerLongitude,
-                CoupleRootField.partnerLocationUpdatedAt
+                CoupleRootField.partnerLocationUpdatedAt,
+                CoupleRootField.partnerProfilePhotoAsset
             )
         }
     }

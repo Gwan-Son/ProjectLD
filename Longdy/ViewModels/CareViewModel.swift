@@ -16,32 +16,17 @@ final class CareViewModel: ObservableObject {
 
     var todayDateKey: String { DateKey.dateKey() }
 
-    func addCareItem(userId: String?, coupleId: String?) async -> CareItem? {
+    func makePendingCareItem(userId: String?) -> CareItem? {
         do {
             errorMessage = nil
             let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleanTitle.isEmpty else { throw LongdyError.invalidInput("챙김 이름을 입력해 주세요.") }
             guard let userId else { throw LongdyError.missingUser }
-            guard let coupleId else { throw LongdyError.missingCouple }
 
             let reminder = reminderEnabled ? Calendar.current.dateComponents([.hour, .minute], from: reminderTime) : nil
             let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-            let itemId = try await service.saveCareItem(
-                coupleId: coupleId,
-                dateKey: todayDateKey,
-                userId: userId,
-                title: cleanTitle,
-                iconName: selectedIconName,
-                repeatRule: repeatRule,
-                reminderHour: reminder?.hour,
-                reminderMinute: reminder?.minute,
-                note: cleanNote
-            )
-            if reminderEnabled, let hour = reminder?.hour, let minute = reminder?.minute {
-                await scheduleNotification(itemId: itemId, title: cleanTitle, hour: hour, minute: minute, repeatRule: repeatRule)
-            }
             let item = CareItem(
-                id: itemId,
+                id: "careItem-\(UUID().uuidString)",
                 userId: userId,
                 dateKey: todayDateKey,
                 title: cleanTitle,
@@ -51,17 +36,57 @@ final class CareViewModel: ObservableObject {
                 reminderMinute: reminder?.minute,
                 note: cleanNote,
                 doneDateKeys: [],
-                createdAt: Date()
+                createdAt: Date(),
+                syncState: .pending
             )
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
-            title = ""
-            note = ""
-            reminderEnabled = false
+            resetComposer()
             return item
         } catch {
             errorMessage = error.longdyUserMessage
             return nil
         }
+    }
+
+    func persistCareItem(coupleId: String?, item: CareItem) async -> CareItem {
+        var result = item
+        result.syncState = .pending
+        do {
+            errorMessage = nil
+            guard let coupleId else { throw LongdyError.missingCouple }
+            _ = try await service.saveCareItem(
+                coupleId: coupleId,
+                itemId: item.id,
+                dateKey: item.dateKey,
+                userId: item.userId,
+                title: item.title,
+                iconName: item.iconName,
+                repeatRule: item.repeatRule,
+                reminderHour: item.reminderHour,
+                reminderMinute: item.reminderMinute,
+                note: item.note
+            )
+            if let hour = item.reminderHour, let minute = item.reminderMinute {
+                await scheduleNotification(
+                    itemId: item.id,
+                    title: item.title,
+                    hour: hour,
+                    minute: minute,
+                    repeatRule: item.repeatRule
+                )
+            }
+            result.syncState = nil
+            return result
+        } catch {
+            result.syncState = .failed
+            errorMessage = error.longdyUserMessage
+            return result
+        }
+    }
+
+    private func resetComposer() {
+            title = ""
+            note = ""
+            reminderEnabled = false
     }
 
     func toggleCareItem(coupleId: String?, item: CareItem) async -> Bool {

@@ -25,6 +25,7 @@ actor CloudKitService {
         static let latitude = "latitude"
         static let longitude = "longitude"
         static let locationUpdatedAt = "locationUpdatedAt"
+        static let profilePhotoAsset = "profilePhotoAsset"
         static let coupleRootRecordName = "coupleRootRecordName"
         static let createdAt = "createdAt"
         static let updatedAt = "updatedAt"
@@ -41,6 +42,7 @@ actor CloudKitService {
         static let ownerLatitude = "ownerLatitude"
         static let ownerLongitude = "ownerLongitude"
         static let ownerLocationUpdatedAt = "ownerLocationUpdatedAt"
+        static let ownerProfilePhotoAsset = "ownerProfilePhotoAsset"
         static let partnerDisplayName = "partnerDisplayName"
         static let partnerNickname = "partnerNickname"
         static let partnerCityName = "partnerCityName"
@@ -48,6 +50,7 @@ actor CloudKitService {
         static let partnerLatitude = "partnerLatitude"
         static let partnerLongitude = "partnerLongitude"
         static let partnerLocationUpdatedAt = "partnerLocationUpdatedAt"
+        static let partnerProfilePhotoAsset = "partnerProfilePhotoAsset"
         static let nextMeetDate = "nextMeetDate"
         static let anniversaryDate = "anniversaryDate"
         static let createdAt = "createdAt"
@@ -59,6 +62,14 @@ actor CloudKitService {
         static let appleUserId = "appleUserId"
         static let createdAt = "createdAt"
         static let updatedAt = "updatedAt"
+    }
+
+    enum MemoryField {
+        static let type = "type"
+        static let text = "text"
+        static let dateKey = "dateKey"
+        static let asset = "asset"
+        static let thumbnailAsset = "thumbnailAsset"
     }
 
     enum InviteCodeField {

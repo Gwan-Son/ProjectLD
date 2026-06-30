@@ -10,6 +10,7 @@ struct LongdyUser: Identifiable, Equatable, Codable {
     var latitude: Double?
     var longitude: Double?
     var locationUpdatedAt: Date?
+    var profilePhotoURL: String? = nil
     var partnerCoupleId: String?
     var createdAt: Date
 
@@ -129,6 +130,14 @@ enum CareRepeatRule: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum LocalSyncState: String, Codable {
+    case pending
+    case failed
+    case deleting
+    case deleteFailed
+    case synced
+}
+
 struct CareItem: Identifiable, Equatable, Codable {
     let id: String
     var userId: String
@@ -141,6 +150,11 @@ struct CareItem: Identifiable, Equatable, Codable {
     var note: String
     var doneDateKeys: [String]
     var createdAt: Date
+    var syncState: LocalSyncState? = nil
+
+    var effectiveSyncState: LocalSyncState {
+        syncState ?? .synced
+    }
 
     var isDoneToday: Bool {
         doneDateKeys.contains(DateKey.dateKey())
@@ -199,8 +213,14 @@ struct MemoryNote: Identifiable, Equatable, Codable {
     var userId: String
     var text: String
     var storageURL: String?
+    var thumbnailURL: String? = nil
     var dateKey: String
     var createdAt: Date
+    var syncState: LocalSyncState? = nil
+
+    var effectiveSyncState: LocalSyncState {
+        syncState ?? .synced
+    }
 }
 
 struct BridgeMilestone: Identifiable, Equatable {

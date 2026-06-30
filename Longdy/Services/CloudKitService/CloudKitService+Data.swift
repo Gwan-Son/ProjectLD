@@ -67,7 +67,7 @@ extension CloudKitService {
         async let checkInRecords = queryRecords(type: RecordType.checkIn, coupleId: coupleId, database: ref.database)
         async let eventRecords = optionalQueryRecords(type: RecordType.coupleEvent, coupleId: coupleId, database: ref.database)
         async let careItemRecords = optionalQueryRecords(type: RecordType.careItem, coupleId: coupleId, database: ref.database)
-        async let memoryRecords = optionalQueryRecords(type: RecordType.memoryNote, coupleId: coupleId, database: ref.database)
+        async let memoryPage = fetchMemoryPage(coupleId: coupleId)
 
         let checkIns = try await checkInRecords
             .compactMap(Self.decodeCheckIn)
@@ -78,9 +78,7 @@ extension CloudKitService {
         let careItems = try await careItemRecords
             .compactMap(Self.decodeCareItem)
             .sorted { $0.createdAt < $1.createdAt }
-        let memories = try await memoryRecords
-            .compactMap(Self.decodeMemory)
-            .sorted { $0.createdAt > $1.createdAt }
+        let memories = try await memoryPage.memories
         return (checkIns, events, careItems, memories)
     }
 
@@ -182,9 +180,12 @@ extension CloudKitService {
         try await delete(recordID: CKRecord.ID(recordName: eventId, zoneID: ref.recordID.zoneID), database: ref.database)
     }
 
-    func saveCareItem(coupleId: String, dateKey: String, userId: String, title: String, iconName: String, repeatRule: CareRepeatRule, reminderHour: Int?, reminderMinute: Int?, note: String) async throws -> String {
+    func saveCareItem(coupleId: String, itemId: String, dateKey: String, userId: String, title: String, iconName: String, repeatRule: CareRepeatRule, reminderHour: Int?, reminderMinute: Int?, note: String) async throws -> String {
         let ref = coupleReference(from: coupleId)
-        let recordID = CKRecord.ID(recordName: "careItem-\(UUID().uuidString)", zoneID: ref.recordID.zoneID)
+        let recordID = CKRecord.ID(recordName: itemId, zoneID: ref.recordID.zoneID)
+        if try await fetchRecord(recordID: recordID, database: ref.database) != nil {
+            return itemId
+        }
         let record = CKRecord(recordType: RecordType.careItem, recordID: recordID)
         attachToCoupleRoot(record, ref: ref)
         record[SharedField.appleUserId] = userId as CKRecordValue
@@ -237,33 +238,55 @@ extension CloudKitService {
 
     func deleteCareItem(coupleId: String, itemId: String) async throws {
         let ref = coupleReference(from: coupleId)
-        try await delete(recordID: CKRecord.ID(recordName: itemId, zoneID: ref.recordID.zoneID), database: ref.database)
+        try await deleteIfExists(
+            recordID: CKRecord.ID(recordName: itemId, zoneID: ref.recordID.zoneID),
+            database: ref.database
+        )
     }
 
-    func saveMemory(coupleId: String, userId: String, text: String, fileData: Data?, fileExtension: String?) async throws -> MemoryNote {
+    func saveMemory(
+        coupleId: String,
+        memoryId: String,
+        userId: String,
+        text: String,
+        fileData: Data?,
+        thumbnailData: Data?,
+        fileExtension: String?
+    ) async throws -> MemoryNote {
         let ref = coupleReference(from: coupleId)
-        let record = CKRecord(recordType: RecordType.memoryNote, recordID: CKRecord.ID(recordName: "memory-\(UUID().uuidString)", zoneID: ref.recordID.zoneID))
+        let recordID = CKRecord.ID(recordName: memoryId, zoneID: ref.recordID.zoneID)
+        if let existing = try await fetchRecord(recordID: recordID, database: ref.database),
+           let memory = Self.decodeMemory(existing) {
+            return memory
+        }
+        let record = CKRecord(recordType: RecordType.memoryNote, recordID: recordID)
         let now = Date()
         attachToCoupleRoot(record, ref: ref)
         record[SharedField.appleUserId] = userId as CKRecordValue
-        record["type"] = "photo" as CKRecordValue
-        record["text"] = text as CKRecordValue
-        record["dateKey"] = Self.dateKey(for: now) as CKRecordValue
+        record[MemoryField.type] = "photo" as CKRecordValue
+        record[MemoryField.text] = text as CKRecordValue
+        record[MemoryField.dateKey] = Self.dateKey(for: now) as CKRecordValue
         record[SharedField.createdAt] = now as CKRecordValue
 
-        var temporaryURL: URL?
+        var temporaryURLs: [URL] = []
         if let fileData, let fileExtension {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(fileExtension)
             try fileData.write(to: url, options: .atomic)
-            temporaryURL = url
-            record["asset"] = CKAsset(fileURL: url)
+            temporaryURLs.append(url)
+            record[MemoryField.asset] = CKAsset(fileURL: url)
+        }
+        if let thumbnailData {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("thumbnail-\(UUID().uuidString)")
+                .appendingPathExtension("jpg")
+            try thumbnailData.write(to: url, options: .atomic)
+            temporaryURLs.append(url)
+            record[MemoryField.thumbnailAsset] = CKAsset(fileURL: url)
         }
         defer {
-            if let temporaryURL {
-                try? FileManager.default.removeItem(at: temporaryURL)
-            }
+            temporaryURLs.forEach { try? FileManager.default.removeItem(at: $0) }
         }
         let savedRecord = try await save(record, database: ref.database)
         return Self.decodeMemory(savedRecord) ?? MemoryNote(
@@ -276,26 +299,39 @@ extension CloudKitService {
         )
     }
 
-    func updateMemory(coupleId: String, memoryId: String, text: String, fileData: Data?, fileExtension: String?) async throws -> MemoryNote {
+    func updateMemory(
+        coupleId: String,
+        memoryId: String,
+        text: String,
+        fileData: Data?,
+        thumbnailData: Data?,
+        fileExtension: String?
+    ) async throws -> MemoryNote {
         let ref = coupleReference(from: coupleId)
         let record = try await fetchRequiredRecord(recordID: CKRecord.ID(recordName: memoryId, zoneID: ref.recordID.zoneID), database: ref.database)
         attachToCoupleRoot(record, ref: ref)
-        record["text"] = text as CKRecordValue
+        record[MemoryField.text] = text as CKRecordValue
         record[SharedField.updatedAt] = Date() as CKRecordValue
 
-        var temporaryURL: URL?
+        var temporaryURLs: [URL] = []
         if let fileData, let fileExtension {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(fileExtension)
             try fileData.write(to: url, options: .atomic)
-            temporaryURL = url
-            record["asset"] = CKAsset(fileURL: url)
+            temporaryURLs.append(url)
+            record[MemoryField.asset] = CKAsset(fileURL: url)
+        }
+        if let thumbnailData {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("thumbnail-\(UUID().uuidString)")
+                .appendingPathExtension("jpg")
+            try thumbnailData.write(to: url, options: .atomic)
+            temporaryURLs.append(url)
+            record[MemoryField.thumbnailAsset] = CKAsset(fileURL: url)
         }
         defer {
-            if let temporaryURL {
-                try? FileManager.default.removeItem(at: temporaryURL)
-            }
+            temporaryURLs.forEach { try? FileManager.default.removeItem(at: $0) }
         }
 
         let savedRecord = try await save(record, database: ref.database)
@@ -304,14 +340,27 @@ extension CloudKitService {
             userId: record[SharedField.appleUserId] as? String ?? "",
             text: text,
             storageURL: nil,
-            dateKey: record["dateKey"] as? String ?? Self.dateKey(),
+            dateKey: record[MemoryField.dateKey] as? String ?? Self.dateKey(),
             createdAt: record[SharedField.createdAt] as? Date ?? Date()
         )
     }
 
+    func fetchMemoryDetail(coupleId: String, memoryId: String) async throws -> MemoryNote {
+        let ref = coupleReference(from: coupleId)
+        let recordID = CKRecord.ID(recordName: memoryId, zoneID: ref.recordID.zoneID)
+        let record = try await fetchRequiredRecord(recordID: recordID, database: ref.database)
+        guard let memory = Self.decodeMemory(record) else {
+            throw LongdyError.invalidInput("사진 정보를 불러오지 못했어요.")
+        }
+        return memory
+    }
+
     func deleteMemory(coupleId: String, memoryId: String) async throws {
         let ref = coupleReference(from: coupleId)
-        try await delete(recordID: CKRecord.ID(recordName: memoryId, zoneID: ref.recordID.zoneID), database: ref.database)
+        try await deleteIfExists(
+            recordID: CKRecord.ID(recordName: memoryId, zoneID: ref.recordID.zoneID),
+            database: ref.database
+        )
     }
 
     private static func isCheckInExpired(_ checkIn: CheckIn) -> Bool {

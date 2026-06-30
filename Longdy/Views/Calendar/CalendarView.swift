@@ -159,26 +159,39 @@ struct CalendarView: View {
                     ForEach(eventsForSelectedDate) { event in
                         CalendarEventRow(
                             event: event,
+                            owner: eventOwner(for: event),
                             ownerName: viewModel.ownerName(for: event, currentUserId: appState.userId, members: appState.members)
                         )
                         .onTapGesture {
-                            viewModel.editingEvent = event
-                        }
-                        .contextMenu {
-                            Button("수정") {
+                            if isMyEvent(event) {
                                 viewModel.editingEvent = event
                             }
-                            Button("삭제", role: .destructive) {
-                                Task {
-                                    if await viewModel.deleteEvent(coupleId: appState.coupleId, event: event) {
-                                        appState.removeEvent(event)
+                        }
+                        .contextMenu {
+                            if isMyEvent(event) {
+                                Button("수정") {
+                                    viewModel.editingEvent = event
+                                }
+                                Button("삭제", role: .destructive) {
+                                    Task {
+                                        if await viewModel.deleteEvent(
+                                            coupleId: appState.coupleId,
+                                            currentUserId: appState.userId,
+                                            event: event
+                                        ) {
+                                            appState.removeEvent(event)
+                                        }
                                     }
                                 }
                             }
                         }
-                        .swipeActionsIfAvailable {
+                        .swipeActionsIfAvailable(isEnabled: isMyEvent(event)) {
                             Task {
-                                if await viewModel.deleteEvent(coupleId: appState.coupleId, event: event) {
+                                if await viewModel.deleteEvent(
+                                    coupleId: appState.coupleId,
+                                    currentUserId: appState.userId,
+                                    event: event
+                                ) {
                                     appState.removeEvent(event)
                                 }
                             }
@@ -203,6 +216,17 @@ struct CalendarView: View {
 
     private var eventsForSelectedDate: [CoupleEvent] {
         viewModel.eventsForSelectedDate(from: appState.events)
+    }
+
+    private func isMyEvent(_ event: CoupleEvent) -> Bool {
+        event.ownerUserId == appState.userId
+    }
+
+    private func eventOwner(for event: CoupleEvent) -> LongdyUser? {
+        if event.ownerUserId == appState.userId {
+            return appState.currentProfile
+        }
+        return appState.members.first { $0.id == event.ownerUserId }
     }
 
     private func glassPanel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -319,12 +343,12 @@ struct EventEditorView: View {
                             .foregroundStyle(.red)
                     }
 
-                    Button("저장") {
+                    Button {
                         Task {
                             let saveStartAt = normalizedStartAt
                             let saveEndAt = normalizedEndAt
                             if let event {
-                                if let updatedEvent = await viewModel.updateEvent(coupleId: appState.coupleId, event: event, title: title, startAt: saveStartAt, endAt: saveEndAt, type: type, memo: memo) {
+                                if let updatedEvent = await viewModel.updateEvent(coupleId: appState.coupleId, currentUserId: appState.userId, event: event, title: title, startAt: saveStartAt, endAt: saveEndAt, type: type, memo: memo) {
                                     appState.applySavedEvent(updatedEvent)
                                     dismiss()
                                 }
@@ -335,13 +359,17 @@ struct EventEditorView: View {
                                 }
                             }
                         }
+                    } label: {
+                        Text("저장")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .background(CalendarPalette.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .contentShape(Rectangle())
                     }
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(CalendarPalette.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .buttonStyle(.plain)
                 }
                 .padding(20)
             }
@@ -456,18 +484,17 @@ struct CalendarDayCell: View {
 
 struct CalendarEventRow: View {
     let event: CoupleEvent
+    let owner: LongdyUser?
     let ownerName: String
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(CalendarPalette.eventColor(for: event.type).opacity(0.16))
-                Image(systemName: icon(for: event.type))
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(CalendarPalette.eventColor(for: event.type))
-            }
-            .frame(width: 48, height: 48)
+            BridgeAvatar(
+                user: owner,
+                fallback: ownerName.first.map(String.init) ?? "?",
+                size: 48,
+                strokeColor: CalendarPalette.eventColor(for: event.type)
+            )
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(event.title)
@@ -486,14 +513,6 @@ struct CalendarEventRow: View {
             }
 
             Spacer()
-
-            Text(ownerInitial)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(CalendarPalette.primary)
-                .frame(width: 32, height: 32)
-                .background(CalendarPalette.surface)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(.white, lineWidth: 2))
         }
         .padding(16)
         .background(CalendarPalette.surface)
@@ -503,10 +522,6 @@ struct CalendarEventRow: View {
                 .stroke(CalendarPalette.surfaceVariant.opacity(0.28), lineWidth: 1)
         }
         .shadow(color: CalendarPalette.primary.opacity(0.05), radius: 10, y: 4)
-    }
-
-    private var ownerInitial: String {
-        ownerName.first.map(String.init) ?? "?"
     }
 
     private var timeText: String {
@@ -531,20 +546,12 @@ struct CalendarEventRow: View {
         return "\(event.type.rawValue) · \(event.startAt.formatted(date: .abbreviated, time: .shortened))"
     }
 
-    private func icon(for type: EventType) -> String {
-        switch type {
-        case .mine: "person.fill"
-        case .partner: "person.2.fill"
-        case .meet: "airplane.departure"
-        case .anniversary: "sparkles"
-        }
-    }
 }
 
 extension View {
     @ViewBuilder
-    func swipeActionsIfAvailable(deleteAction: @escaping () -> Void) -> some View {
-        if #available(iOS 15.0, *) {
+    func swipeActionsIfAvailable(isEnabled: Bool = true, deleteAction: @escaping () -> Void) -> some View {
+        if #available(iOS 15.0, *), isEnabled {
             self.swipeActions {
                 Button("삭제", role: .destructive) {
                     deleteAction()

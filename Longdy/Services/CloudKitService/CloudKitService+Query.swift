@@ -1,6 +1,11 @@
 import CloudKit
 import Foundation
 
+struct MemoryPage {
+    let memories: [MemoryNote]
+    let cursor: CKQueryOperation.Cursor?
+}
+
 extension CloudKitService {
     func queryRecords(type: String, coupleId: String, database: CKDatabase) async throws -> [CKRecord] {
         let ref = coupleReference(from: coupleId)
@@ -38,6 +43,56 @@ extension CloudKitService {
         } catch {
             if isMissingRecordTypeError(error) {
                 return []
+            }
+            throw error
+        }
+    }
+
+    func fetchMemoryPage(
+        coupleId: String,
+        cursor: CKQueryOperation.Cursor? = nil,
+        limit: Int = 20
+    ) async throws -> MemoryPage {
+        let ref = coupleReference(from: coupleId)
+        let desiredKeys = [
+            SharedField.appleUserId,
+            SharedField.createdAt,
+            MemoryField.text,
+            MemoryField.dateKey,
+            MemoryField.thumbnailAsset
+        ]
+
+        do {
+            let result: (matchResults: [(CKRecord.ID, Result<CKRecord, Error>)], queryCursor: CKQueryOperation.Cursor?)
+            if let cursor {
+                result = try await ref.database.records(
+                    continuingMatchFrom: cursor,
+                    desiredKeys: desiredKeys,
+                    resultsLimit: limit
+                )
+            } else {
+                let predicate = NSPredicate(
+                    format: "%K == %@",
+                    SharedField.coupleRootRecordName,
+                    ref.recordID.recordName
+                )
+                let query = CKQuery(recordType: RecordType.memoryNote, predicate: predicate)
+                query.sortDescriptors = [NSSortDescriptor(key: SharedField.createdAt, ascending: false)]
+                result = try await ref.database.records(
+                    matching: query,
+                    inZoneWith: ref.recordID.zoneID,
+                    desiredKeys: desiredKeys,
+                    resultsLimit: limit
+                )
+            }
+
+            let memories = try result.matchResults
+                .map { try $0.1.get() }
+                .compactMap(Self.decodeMemory)
+            return MemoryPage(memories: memories, cursor: result.queryCursor)
+        } catch {
+            if isMissingRecordTypeError(error) {
+                return MemoryPage(memories: [], cursor: nil)
             }
             throw error
         }

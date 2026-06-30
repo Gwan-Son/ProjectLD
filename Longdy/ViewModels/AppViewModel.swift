@@ -68,6 +68,9 @@ final class AppViewModel: ObservableObject {
     private var isRefreshingCoupleData = false
     private var lastCoupleDataRefreshAt: Date?
     private let minimumCoupleDataRefreshInterval: TimeInterval = 5
+    private var recentlyCommittedCareItemIDs: [String: Date] = [:]
+    private var recentlyCommittedMemoryIDs: [String: Date] = [:]
+    private let cloudKitReconciliationGrace: TimeInterval = 30
 
     init() {
         CloudKitChangeCoordinator.shared.handler = { [weak self] in
@@ -399,9 +402,15 @@ final class AppViewModel: ObservableObject {
     }
 
     func applySavedCareItem(_ item: CareItem) {
+        let previousState = careItems.first(where: { $0.id == item.id })?.effectiveSyncState
         careItems.removeAll { $0.id == item.id }
         careItems.append(item)
         careItems.sort { $0.createdAt < $1.createdAt }
+        if item.effectiveSyncState == .synced,
+           let previousState,
+           previousState != .synced {
+            recentlyCommittedCareItemIDs[item.id] = Date()
+        }
         saveCurrentCoupleCache()
     }
 
@@ -417,21 +426,29 @@ final class AppViewModel: ObservableObject {
 
     func removeCareItem(_ item: CareItem) {
         careItems.removeAll { $0.id == item.id }
+        recentlyCommittedCareItemIDs.removeValue(forKey: item.id)
         saveCurrentCoupleCache()
     }
 
     func applySavedMemory(_ memory: MemoryNote) {
+        let previousState = memories.first(where: { $0.id == memory.id })?.effectiveSyncState
         memories.removeAll {
             $0.id == memory.id
                 || ($0.userId == memory.userId && $0.dateKey == memory.dateKey)
         }
         memories.insert(memory, at: 0)
         memories.sort { $0.createdAt > $1.createdAt }
+        if memory.effectiveSyncState == .synced,
+           let previousState,
+           previousState != .synced {
+            recentlyCommittedMemoryIDs[memory.id] = Date()
+        }
         saveCurrentCoupleCache()
     }
 
     func removeMemory(_ memory: MemoryNote) {
         memories.removeAll { $0.id == memory.id }
+        recentlyCommittedMemoryIDs.removeValue(forKey: memory.id)
         saveCurrentCoupleCache()
     }
 
@@ -529,6 +546,18 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func applyUpdatedProfile(_ profile: LongdyUser) {
+        currentProfile = profile
+        if let index = couple?.memberProfiles.firstIndex(where: { $0.id == profile.id }) {
+            couple?.memberProfiles[index] = profile
+        }
+        bindMembers(from: couple)
+        saveCurrentCoupleCache()
+        Task {
+            await refreshCoupleStatus()
+        }
+    }
+
     func refreshCoupleData(force: Bool = false) {
         guard let coupleId else { return }
         Task {
@@ -542,6 +571,12 @@ final class AppViewModel: ObservableObject {
         let previousCheckInIDs = Set(checkIns.map(\.id))
         let previousMemoryIDs = Set(memories.map(\.id))
         let previousEventIDs = Set(events.map(\.id))
+
+        if let refreshedCouple = try? await cloudKitService.fetchCoupleRoot(recordName: coupleId) {
+            couple = refreshedCouple
+            bindMembers(from: refreshedCouple)
+            saveCurrentCoupleCache()
+        }
 
         var didLoad = false
         for attempt in 0..<3 {
@@ -721,8 +756,8 @@ final class AppViewModel: ObservableObject {
             let data = try await cloudKitService.fetchCoupleData(coupleId: coupleId)
             checkIns = data.checkIns
             events = data.events
-            careItems = data.careItems
-            memories = data.memories
+            careItems = mergeUnsyncedCareItems(with: data.careItems)
+            memories = mergeUnsyncedMemories(with: data.memories)
             bridgeActivities = try await cloudKitService.fetchBridgeActivities(
                 coupleId: coupleId,
                 userIds: members.map(\.id),
@@ -757,7 +792,7 @@ final class AppViewModel: ObservableObject {
             let data = try await cloudKitService.fetchHomeData(coupleId: coupleId)
             checkIns = data.checkIns
             events = data.events
-            careItems = data.careItems
+            careItems = mergeUnsyncedCareItems(with: data.careItems)
             bridgeActivities = try await cloudKitService.fetchBridgeActivities(
                 coupleId: coupleId,
                 userIds: members.map(\.id),
@@ -785,8 +820,18 @@ final class AppViewModel: ObservableObject {
         members = snapshot.members
         checkIns = snapshot.checkIns
         events = snapshot.events
-        careItems = snapshot.careItems
-        memories = snapshot.memories
+        careItems = snapshot.careItems.map { item in
+            var restored = item
+            if restored.effectiveSyncState == .pending { restored.syncState = .failed }
+            if restored.effectiveSyncState == .deleting { restored.syncState = .deleteFailed }
+            return restored
+        }
+        memories = snapshot.memories.map { memory in
+            var restored = memory
+            if restored.effectiveSyncState == .pending { restored.syncState = .failed }
+            if restored.effectiveSyncState == .deleting { restored.syncState = .deleteFailed }
+            return restored
+        }
         bridgeActivities = snapshot.bridgeActivities ?? []
         hasLoadedCoupleData = true
         isLoadingCoupleData = false
@@ -806,6 +851,35 @@ final class AppViewModel: ObservableObject {
             bridgeActivities: bridgeActivities.filter { !$0.id.hasPrefix("pending-") }
         )
         LocalCoupleDataCache.save(snapshot)
+    }
+
+    private func mergeUnsyncedCareItems(with remoteItems: [CareItem]) -> [CareItem] {
+        let now = Date()
+        let remoteIDs = Set(remoteItems.map(\.id))
+        recentlyCommittedCareItemIDs = recentlyCommittedCareItemIDs.filter { id, committedAt in
+            !remoteIDs.contains(id) && now.timeIntervalSince(committedAt) < cloudKitReconciliationGrace
+        }
+        let protectedIDs = Set(recentlyCommittedCareItemIDs.keys)
+        let localItems = careItems.filter {
+            $0.effectiveSyncState != .synced || protectedIDs.contains($0.id)
+        }
+        let localIDs = Set(localItems.map(\.id))
+        return localItems + remoteItems.filter { !localIDs.contains($0.id) }
+    }
+
+    private func mergeUnsyncedMemories(with remoteMemories: [MemoryNote]) -> [MemoryNote] {
+        let now = Date()
+        let remoteIDs = Set(remoteMemories.map(\.id))
+        recentlyCommittedMemoryIDs = recentlyCommittedMemoryIDs.filter { id, committedAt in
+            !remoteIDs.contains(id) && now.timeIntervalSince(committedAt) < cloudKitReconciliationGrace
+        }
+        let protectedIDs = Set(recentlyCommittedMemoryIDs.keys)
+        let localMemories = memories.filter {
+            $0.effectiveSyncState != .synced || protectedIDs.contains($0.id)
+        }
+        let localIDs = Set(localMemories.map(\.id))
+        return (localMemories + remoteMemories.filter { !localIDs.contains($0.id) })
+            .sorted { $0.createdAt > $1.createdAt }
     }
 
     private func loadHomeCardOrder(for userId: String) {
