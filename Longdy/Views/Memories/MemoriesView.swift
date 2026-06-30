@@ -850,30 +850,6 @@ private struct PhotoEditorView: View {
     }
 }
 
-private struct PhotoSavingOverlay: View {
-    let message: String
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.18)
-                .ignoresSafeArea()
-
-            VStack(spacing: 12) {
-                ProgressView()
-                    .tint(PhotoPalette.primary)
-                Text(message)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(PhotoPalette.ink)
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
-            .background(PhotoPalette.surface.opacity(0.96))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .shadow(color: PhotoPalette.primary.opacity(0.16), radius: 16, y: 8)
-        }
-    }
-}
-
 private struct PhotoPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

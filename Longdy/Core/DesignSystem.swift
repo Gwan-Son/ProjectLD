@@ -2,14 +2,9 @@ import SwiftUI
 import UIKit
 
 enum LongdyColors {
-    static let background = Color(red: 0.98, green: 0.95, blue: 0.90)
-    static let surface = Color(red: 1.00, green: 0.99, blue: 0.96)
     static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
-    static let peach = Color(red: 0.96, green: 0.63, blue: 0.49)
-    static let mint = Color(red: 0.70, green: 0.82, blue: 0.73)
     static let ink = Color(red: 0.13, green: 0.18, blue: 0.24)
     static let muted = Color(red: 0.44, green: 0.43, blue: 0.40)
-    static let line = Color(red: 0.88, green: 0.82, blue: 0.74)
 }
 
 enum HomePalette {
@@ -58,9 +53,6 @@ enum CarePalette {
     static let secondary = Color(red: 0.49, green: 0.33, blue: 0.25)
     static let tertiary = Color(red: 0.45, green: 0.35, blue: 0.25)
     static let primaryContainer = Color(red: 0.96, green: 0.59, blue: 0.56)
-    static let secondaryContainer = Color(red: 0.99, green: 0.78, blue: 0.68)
-    static let tertiaryContainer = Color(red: 0.80, green: 0.67, blue: 0.55)
-    static let onPrimaryContainer = Color(red: 0.44, green: 0.18, blue: 0.16)
     static let onSurfaceVariant = Color(red: 0.33, green: 0.26, blue: 0.25)
     static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
     static let muted = Color(red: 0.33, green: 0.26, blue: 0.25)
@@ -95,11 +87,9 @@ enum LoginPalette {
     static let background = Color(red: 1.00, green: 0.97, blue: 0.97)
     static let surfaceContainer = Color(red: 1.00, green: 0.91, blue: 0.95)
     static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
-    static let primaryContainer = Color(red: 0.96, green: 0.59, blue: 0.56)
     static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
     static let muted = Color(red: 0.33, green: 0.26, blue: 0.25)
     static let outline = Color(red: 0.53, green: 0.45, blue: 0.44)
-    static let line = Color(red: 0.85, green: 0.76, blue: 0.75)
     static let error = Color(red: 0.73, green: 0.10, blue: 0.10)
 }
 
@@ -110,8 +100,6 @@ enum CoupleSetupPalette {
     static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
     static let primaryContainer = Color(red: 0.96, green: 0.59, blue: 0.56)
     static let secondary = Color(red: 0.49, green: 0.33, blue: 0.25)
-    static let secondaryContainer = Color(red: 0.99, green: 0.78, blue: 0.68)
-    static let onSecondaryContainer = Color(red: 0.47, green: 0.31, blue: 0.24)
     static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
     static let muted = Color(red: 0.33, green: 0.26, blue: 0.25)
     static let outline = Color(red: 0.53, green: 0.45, blue: 0.44)
@@ -120,46 +108,13 @@ enum CoupleSetupPalette {
 }
 
 enum MoodSharePalette {
-    static let background = Color(red: 1.00, green: 0.96, blue: 0.97)
     static let surface = Color.white.opacity(0.82)
     static let iconBackground = Color(red: 1.00, green: 0.91, blue: 0.94)
     static let selectedIcon = Color(red: 1.00, green: 0.82, blue: 0.84)
     static let selectedBackground = Color(red: 1.00, green: 0.91, blue: 0.93)
     static let primary = Color(red: 0.58, green: 0.28, blue: 0.26)
     static let ink = Color(red: 0.16, green: 0.09, blue: 0.13)
-    static let muted = Color(red: 0.43, green: 0.34, blue: 0.35)
     static let line = Color(red: 0.88, green: 0.78, blue: 0.79)
-}
-
-struct LongdyCard<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(LongdyColors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(LongdyColors.line.opacity(0.55), lineWidth: 1)
-            )
-    }
-}
-
-struct SectionTitle: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        Label(title, systemImage: systemImage)
-            .font(.headline)
-            .foregroundStyle(LongdyColors.ink)
-    }
 }
 
 struct BridgeAvatar: View {
@@ -290,24 +245,5 @@ struct EmptyStateView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-    }
-}
-
-struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 13)
-            .background(LongdyColors.peach.opacity(configuration.isPressed ? 0.75 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-}
-
-extension View {
-    func longdyScreen() -> some View {
-        scrollContentBackground(.hidden)
-            .background(LongdyColors.background.ignoresSafeArea())
     }
 }

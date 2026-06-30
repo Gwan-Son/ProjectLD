@@ -1,7 +1,6 @@
 import CloudKit
 import Combine
 import Foundation
-import SwiftUI
 import UIKit
 
 @MainActor

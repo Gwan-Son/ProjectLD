@@ -502,16 +502,6 @@ struct HomeView: View {
         }
     }
 
-    private func presenceChip(_ icon: String, _ text: String, _ color: Color) -> some View {
-        Label(text, systemImage: icon)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(HomePalette.ink)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 8)
-            .background(color.opacity(0.22))
-            .clipShape(Capsule())
-    }
-
     private func avatar(for user: LongdyUser?, fallback: String) -> some View {
         BridgeAvatar(user: user, fallback: fallback)
     }
@@ -589,13 +579,6 @@ struct HomeView: View {
     private var memoryText: String {
         guard let memory = appState.recentMemory else { return "\"오늘 서로에게 보여주고 싶은 장면을 남겨보세요.\"" }
         return memory.text.isEmpty ? "\"오늘의 장면이 조용히 도착했어요.\"" : "\"\(memory.text)\""
-    }
-
-    private var distanceText: String {
-        let mine = appState.currentProfile?.cityName
-        let partner = appState.partner?.cityName
-        guard let mine, let partner, !mine.isEmpty, !partner.isEmpty else { return "우리의 거리" }
-        return "\(mine) ↔ \(partner)"
     }
 
     private func timeText(for user: LongdyUser?, date: Date) -> String {

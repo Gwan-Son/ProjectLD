@@ -166,48 +166,6 @@ struct CareItem: Identifiable, Equatable, Codable {
     }
 }
 
-enum CareCategoryFallback {
-    case meal
-    case water
-    case medicine
-    case rest
-    case sleep
-    case walk
-
-    init(rawValue: String) {
-        switch rawValue {
-        case "밥 챙기기": self = .meal
-        case "물 마시기": self = .water
-        case "약 챙기기": self = .medicine
-        case "일찍 자기": self = .sleep
-        case "가볍게 걷기": self = .walk
-        default: self = .rest
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .meal: "밥 챙기기"
-        case .water: "물 마시기"
-        case .medicine: "약 챙기기"
-        case .rest: "잠깐 쉬기"
-        case .sleep: "일찍 자기"
-        case .walk: "가볍게 걷기"
-        }
-    }
-
-    var iconName: String {
-        switch self {
-        case .meal: "meal"
-        case .water: "drink-water"
-        case .medicine: "medicine"
-        case .rest: "rest"
-        case .sleep: "sleep"
-        case .walk: "walk"
-        }
-    }
-}
-
 struct MemoryNote: Identifiable, Equatable, Codable {
     let id: String
     var userId: String

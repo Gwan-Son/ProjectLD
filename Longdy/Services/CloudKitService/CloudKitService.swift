@@ -105,10 +105,6 @@ actor CloudKitService {
         container.publicCloudDatabase
     }
 
-    nonisolated var sharingContainer: CKContainer {
-        container
-    }
-
     func fetchAccountStatus() async throws -> CKAccountStatus {
         try await withCheckedThrowingContinuation { continuation in
             container.accountStatus { status, error in

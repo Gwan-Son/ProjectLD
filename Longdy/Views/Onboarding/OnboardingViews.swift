@@ -1,5 +1,4 @@
 import SwiftUI
-import CloudKit
 import UIKit
 
 struct AuthView: View {
