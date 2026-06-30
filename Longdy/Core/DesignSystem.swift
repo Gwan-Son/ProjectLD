@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum LongdyColors {
     static let background = Color(red: 0.98, green: 0.95, blue: 0.90)
@@ -164,18 +165,35 @@ struct SectionTitle: View {
 struct BridgeAvatar: View {
     let user: LongdyUser?
     let fallback: String
+    var size: CGFloat = 40
+    var strokeColor = Color(red: 0.96, green: 0.59, blue: 0.56)
 
     var body: some View {
-        Text(user?.friendlyName.first.map(String.init) ?? fallback)
-            .font(.system(size: 14, weight: .bold, design: .rounded))
-            .foregroundStyle(Color(red: 0.58, green: 0.28, blue: 0.26))
-            .frame(width: 40, height: 40)
-            .background(Color(red: 1.00, green: 0.98, blue: 0.98))
-            .clipShape(Circle())
-            .overlay(
-                Circle()
-                    .stroke(Color(red: 0.96, green: 0.59, blue: 0.56), lineWidth: 2)
-            )
+        ZStack {
+            Color(red: 1.00, green: 0.98, blue: 0.98)
+            if let image = profileImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Text(user?.friendlyName.first.map(String.init) ?? fallback)
+                    .font(.system(size: max(14, size * 0.34), weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(red: 0.58, green: 0.28, blue: 0.26))
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay {
+            Circle()
+                .strokeBorder(strokeColor, lineWidth: 2)
+        }
+    }
+
+    private var profileImage: UIImage? {
+        guard let urlText = user?.profilePhotoURL,
+              let url = URL(string: urlText),
+              url.isFileURL else { return nil }
+        return UIImage(contentsOfFile: url.path)
     }
 }
 
@@ -225,13 +243,7 @@ struct BridgeScreenHeader: View {
     }
 
     private func headerAvatar(for user: LongdyUser?, fallback: String, stroke: Color) -> some View {
-        Text(user?.friendlyName.first.map(String.init) ?? fallback)
-            .font(.system(size: 14, weight: .bold, design: .rounded))
-            .foregroundStyle(primaryColor)
-            .frame(width: 40, height: 40)
-            .background(Color.white.opacity(0.9))
-            .clipShape(Circle())
-            .overlay(Circle().stroke(stroke, lineWidth: 2))
+        BridgeAvatar(user: user, fallback: fallback, strokeColor: stroke)
     }
 }
 
