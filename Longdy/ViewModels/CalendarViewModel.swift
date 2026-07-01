@@ -9,7 +9,11 @@ final class CalendarViewModel: ObservableObject {
     @Published var visibleMonth = Date()
     @Published var errorMessage: String?
 
-    private let service = CloudKitService.shared
+    private let repository: any CalendarRepository
+
+    init(repository: any CalendarRepository = DependencyContainer.live.calendarRepository) {
+        self.repository = repository
+    }
 
     var weekdaySymbols: [String] { ["일", "월", "화", "수", "목", "금", "토"] }
 
@@ -69,8 +73,8 @@ final class CalendarViewModel: ObservableObject {
             guard endAt >= startAt else { throw LongdyError.invalidInput("끝 시간이 시작 시간보다 빠를 수 없어요.") }
             guard let userId else { throw LongdyError.missingUser }
             guard let coupleId else { throw LongdyError.missingCouple }
-            let event = try await service.saveEvent(coupleId: coupleId, ownerUserId: userId, title: title, startAt: startAt, endAt: endAt, type: type, memo: memo)
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
+            let event = try await repository.saveEvent(coupleId: coupleId, ownerUserId: userId, title: title, startAt: startAt, endAt: endAt, type: type, memo: memo)
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
             return event
         } catch {
             errorMessage = error.longdyUserMessage
@@ -87,8 +91,8 @@ final class CalendarViewModel: ObservableObject {
             guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LongdyError.invalidInput("일정 제목이 필요해요.") }
             guard endAt >= startAt else { throw LongdyError.invalidInput("끝 시간이 시작 시간보다 빠를 수 없어요.") }
             guard let coupleId else { throw LongdyError.missingCouple }
-            let updatedEvent = try await service.updateEvent(coupleId: coupleId, eventId: event.id, title: title, startAt: startAt, endAt: endAt, type: type, memo: memo)
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
+            let updatedEvent = try await repository.updateEvent(coupleId: coupleId, eventId: event.id, title: title, startAt: startAt, endAt: endAt, type: type, memo: memo)
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
             return updatedEvent
         } catch {
             errorMessage = error.longdyUserMessage
@@ -103,8 +107,8 @@ final class CalendarViewModel: ObservableObject {
                 throw LongdyError.invalidInput("상대가 등록한 일정은 삭제할 수 없어요.")
             }
             guard let coupleId else { throw LongdyError.missingCouple }
-            try await service.deleteEvent(coupleId: coupleId, eventId: event.id)
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
+            try await repository.deleteEvent(coupleId: coupleId, eventId: event.id)
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
             return true
         } catch {
             errorMessage = error.longdyUserMessage

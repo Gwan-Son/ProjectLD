@@ -8,7 +8,11 @@ final class AuthViewModel: ObservableObject {
 
     private let appleAuthService = AppleAuthService.shared
     private let appleSessionStore = AppleSessionStore.shared
-    private let cloudKitService = CloudKitService.shared
+    private let profileRepository: any AuthProfileRepository
+
+    init(profileRepository: any AuthProfileRepository = DependencyContainer.live.authProfileRepository) {
+        self.profileRepository = profileRepository
+    }
 
     func signInWithApple() async -> Bool {
         guard !isSigningInWithApple else { return false }
@@ -18,10 +22,10 @@ final class AuthViewModel: ObservableObject {
         do {
             errorMessage = nil
             let appleResult = try await appleAuthService.signIn()
-            let displayName = Self.displayName(from: appleResult.fullName) ?? "Guest"
+            let displayName = Self.displayName(from: appleResult.fullName)
             appleSessionStore.save(appleUserId: appleResult.appleUserId, email: appleResult.email, displayName: displayName)
             if let session = appleSessionStore.currentSession {
-                _ = try await cloudKitService.upsertUserProfile(session: session, nickname: displayName)
+                _ = try await profileRepository.upsertUserProfile(session: session, nickname: displayName)
             }
             return true
         } catch {

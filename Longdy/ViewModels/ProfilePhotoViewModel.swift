@@ -7,7 +7,11 @@ final class ProfilePhotoViewModel: ObservableObject {
     @Published var isSaving = false
     @Published var errorMessage: String?
 
-    private let service = CloudKitService.shared
+    private let repository: any ProfilePhotoRepository
+
+    init(repository: any ProfilePhotoRepository = DependencyContainer.live.profilePhotoRepository) {
+        self.repository = repository
+    }
 
     func save(session: AppleSession?, photoData: Data) async -> LongdyUser? {
         guard !isSaving else { return nil }
@@ -20,7 +24,7 @@ final class ProfilePhotoViewModel: ObservableObject {
             guard let compressedData = squareJPEGData(from: photoData) else {
                 throw LongdyError.invalidInput("사진을 불러오지 못했어요.")
             }
-            return try await service.updateUserProfilePhoto(session: session, fileData: compressedData)
+            return try await repository.updateUserProfilePhoto(session: session, fileData: compressedData)
         } catch {
             errorMessage = error.longdyUserMessage
             return nil
@@ -35,7 +39,7 @@ final class ProfilePhotoViewModel: ObservableObject {
         do {
             errorMessage = nil
             guard let session else { throw LongdyError.missingUser }
-            return try await service.updateUserProfilePhoto(session: session, fileData: nil)
+            return try await repository.updateUserProfilePhoto(session: session, fileData: nil)
         } catch {
             errorMessage = error.longdyUserMessage
             return nil

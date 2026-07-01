@@ -12,8 +12,12 @@ final class MemoriesViewModel: ObservableObject {
     @Published private(set) var isLoadingPage = false
     @Published private(set) var hasMorePages = false
 
-    private let service = CloudKitService.shared
+    private let repository: any MemoryRepository
     private var nextCursor: CKQueryOperation.Cursor?
+
+    init(repository: any MemoryRepository = DependencyContainer.live.memoryRepository) {
+        self.repository = repository
+    }
 
     func seedMemories(_ values: [MemoryNote]) {
         guard memories.isEmpty else { return }
@@ -31,7 +35,7 @@ final class MemoriesViewModel: ObservableObject {
 
         do {
             errorMessage = nil
-            let page = try await service.fetchMemoryPage(coupleId: coupleId)
+            let page = try await repository.fetchMemoryPage(coupleId: coupleId)
             let unsynced = memories.filter { $0.effectiveSyncState != .synced }
             memories = deduplicated(unsynced + page.memories)
             nextCursor = page.cursor
@@ -48,7 +52,7 @@ final class MemoriesViewModel: ObservableObject {
 
         do {
             errorMessage = nil
-            let page = try await service.fetchMemoryPage(coupleId: coupleId, cursor: cursor)
+            let page = try await repository.fetchMemoryPage(coupleId: coupleId, cursor: cursor)
             memories = deduplicated(memories + page.memories)
             nextCursor = page.cursor
             hasMorePages = page.cursor != nil
@@ -121,7 +125,7 @@ final class MemoriesViewModel: ObservableObject {
                   let thumbnailData = localData(from: memory.thumbnailURL) else {
                 throw LongdyError.invalidInput("임시 저장된 사진을 찾지 못했어요. 사진을 다시 선택해 주세요.")
             }
-            result = try await service.saveMemory(
+            result = try await repository.saveMemory(
                 coupleId: coupleId,
                 memoryId: memory.id,
                 userId: memory.userId,
@@ -152,7 +156,7 @@ final class MemoriesViewModel: ObservableObject {
             guard let coupleId else { throw LongdyError.missingCouple }
             let cleanCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
             let thumbnailData = selectedPhotoData.flatMap(thumbnailJPEGData)
-            var updatedMemory = try await service.updateMemory(
+            var updatedMemory = try await repository.updateMemory(
                 coupleId: coupleId,
                 memoryId: memory.id,
                 text: cleanCaption,
@@ -176,7 +180,7 @@ final class MemoriesViewModel: ObservableObject {
         do {
             errorMessage = nil
             guard let coupleId else { throw LongdyError.missingCouple }
-            try await service.deleteMemory(coupleId: coupleId, memoryId: memory.id)
+            try await repository.deleteMemory(coupleId: coupleId, memoryId: memory.id)
             postDelayedRefresh()
             return true
         } catch {
@@ -248,7 +252,7 @@ final class MemoriesViewModel: ObservableObject {
     private func postDelayedRefresh() {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
         }
     }
 }
@@ -259,10 +263,14 @@ final class MemoryDetailViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
 
-    private let service = CloudKitService.shared
+    private let repository: any MemoryRepository
 
-    init(memory: MemoryNote) {
+    init(
+        memory: MemoryNote,
+        repository: any MemoryRepository = DependencyContainer.live.memoryRepository
+    ) {
         self.memory = memory
+        self.repository = repository
     }
 
     func loadOriginal(coupleId: String?) async {
@@ -272,7 +280,7 @@ final class MemoryDetailViewModel: ObservableObject {
 
         do {
             errorMessage = nil
-            memory = try await service.fetchMemoryDetail(coupleId: coupleId, memoryId: memory.id)
+            memory = try await repository.fetchMemoryDetail(coupleId: coupleId, memoryId: memory.id)
         } catch {
             errorMessage = error.longdyUserMessage
         }

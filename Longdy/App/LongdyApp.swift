@@ -46,7 +46,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
 extension Notification.Name {
     static let longdyDidReceivePendingCloudKitShare = Notification.Name("longdyDidReceivePendingCloudKitShare")
-    static let longdyShouldRefreshCoupleData = Notification.Name("longdyShouldRefreshCoupleData")
 }
 
 @main
@@ -60,9 +59,6 @@ struct LongdyApp: App {
                 .environmentObject(appState)
                 .onReceive(NotificationCenter.default.publisher(for: .longdyDidReceivePendingCloudKitShare)) { _ in
                     appState.handlePendingCloudKitShare()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .longdyShouldRefreshCoupleData)) { _ in
-                    appState.refreshCoupleData(force: true)
                 }
                 .onOpenURL { url in
                     appState.handleIncomingShareURL(url)

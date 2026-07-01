@@ -8,7 +8,11 @@ final class CheckInViewModel: ObservableObject {
     @Published var duration: MoodShareDuration = .oneHour
     @Published var errorMessage: String?
 
-    private let service = CloudKitService.shared
+    private let repository: any CheckInRepository
+
+    init(repository: any CheckInRepository = DependencyContainer.live.checkInRepository) {
+        self.repository = repository
+    }
 
     func load(from checkIn: CheckIn?) {
         guard let checkIn else { return }
@@ -23,8 +27,8 @@ final class CheckInViewModel: ObservableObject {
             errorMessage = nil
             guard let userId else { throw LongdyError.missingUser }
             guard let coupleId else { throw LongdyError.missingCouple }
-            let checkIn = try await service.saveCheckIn(coupleId: coupleId, userId: userId, mood: mood, status: status, expiresAt: duration.expiresAt)
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
+            let checkIn = try await repository.saveCheckIn(coupleId: coupleId, userId: userId, mood: mood, status: status, expiresAt: duration.expiresAt)
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
             return checkIn
         } catch {
             errorMessage = error.longdyUserMessage

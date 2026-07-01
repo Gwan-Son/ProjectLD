@@ -8,7 +8,11 @@ final class CoupleSetupViewModel: ObservableObject {
     @Published var isCreatingShare = false
     @Published var isJoining = false
 
-    private let cloudKitService = CloudKitService.shared
+    private let coupleRepository: any CoupleRepository
+
+    init(coupleRepository: any CoupleRepository = DependencyContainer.live.coupleRepository) {
+        self.coupleRepository = coupleRepository
+    }
 
     func createCouple(session: AppleSession?) async -> Couple? {
         guard !isCreatingShare else { return nil }
@@ -18,7 +22,7 @@ final class CoupleSetupViewModel: ObservableObject {
         do {
             errorMessage = nil
             guard let session else { throw LongdyError.missingUser }
-            let result = try await cloudKitService.createCoupleRootShare(session: session)
+            let result = try await coupleRepository.createCoupleRootShare(session: session)
             return result.couple
         } catch {
             errorMessage = error.longdyUserMessage
@@ -34,7 +38,7 @@ final class CoupleSetupViewModel: ObservableObject {
         do {
             errorMessage = nil
             guard let session else { throw LongdyError.missingUser }
-            let result = try await cloudKitService.regenerateCoupleRootShare(session: session, currentCoupleId: currentCoupleId)
+            let result = try await coupleRepository.regenerateCoupleRootShare(session: session, currentCoupleId: currentCoupleId)
             return result.couple
         } catch {
             errorMessage = error.longdyUserMessage
@@ -50,7 +54,7 @@ final class CoupleSetupViewModel: ObservableObject {
         do {
             errorMessage = nil
             guard let session else { throw LongdyError.missingUser }
-            return try await cloudKitService.joinCouple(
+            return try await coupleRepository.joinCouple(
                 inviteCode: inviteCode,
                 session: session,
                 currentCoupleId: currentCoupleId

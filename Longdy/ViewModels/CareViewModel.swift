@@ -12,7 +12,11 @@ final class CareViewModel: ObservableObject {
     @Published var note = ""
     @Published var errorMessage: String?
 
-    private let service = CloudKitService.shared
+    private let repository: any CareRepository
+
+    init(repository: any CareRepository = DependencyContainer.live.careRepository) {
+        self.repository = repository
+    }
 
     var todayDateKey: String { DateKey.dateKey() }
 
@@ -53,7 +57,7 @@ final class CareViewModel: ObservableObject {
         do {
             errorMessage = nil
             guard let coupleId else { throw LongdyError.missingCouple }
-            _ = try await service.saveCareItem(
+            _ = try await repository.saveCareItem(
                 coupleId: coupleId,
                 itemId: item.id,
                 dateKey: item.dateKey,
@@ -93,8 +97,8 @@ final class CareViewModel: ObservableObject {
         do {
             errorMessage = nil
             guard let coupleId else { throw LongdyError.missingCouple }
-            try await service.updateCareItem(coupleId: coupleId, itemId: item.id, dateKey: todayDateKey, isDone: !item.isDoneToday)
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
+            try await repository.updateCareItem(coupleId: coupleId, itemId: item.id, dateKey: todayDateKey, isDone: !item.isDoneToday)
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
             return true
         } catch {
             errorMessage = error.longdyUserMessage
@@ -121,7 +125,7 @@ final class CareViewModel: ObservableObject {
             let reminder = reminderEnabled
                 ? Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
                 : nil
-            try await service.updateCareItemDetails(
+            try await repository.updateCareItemDetails(
                 coupleId: coupleId,
                 itemId: item.id,
                 title: cleanTitle,
@@ -143,7 +147,7 @@ final class CareViewModel: ObservableObject {
                     repeatRule: repeatRule
                 )
             }
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
             return errorMessage == nil
         } catch {
             errorMessage = error.longdyUserMessage
@@ -155,9 +159,9 @@ final class CareViewModel: ObservableObject {
         do {
             errorMessage = nil
             guard let coupleId else { throw LongdyError.missingCouple }
-            try await service.deleteCareItem(coupleId: coupleId, itemId: item.id)
+            try await repository.deleteCareItem(coupleId: coupleId, itemId: item.id)
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: notificationIdentifiers(for: item.id))
-            NotificationCenter.default.post(name: .longdyShouldRefreshCoupleData, object: nil)
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
             return true
         } catch {
             errorMessage = error.longdyUserMessage
