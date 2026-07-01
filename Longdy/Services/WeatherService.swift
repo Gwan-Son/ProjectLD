@@ -1,5 +1,5 @@
 import Foundation
-import CoreLocation
+@preconcurrency import CoreLocation
 import MapKit
 
 actor WeatherService {
@@ -80,9 +80,13 @@ actor WeatherService {
     private func localizedCityName(latitude: Double, longitude: Double, fallback: String) async -> String {
         let location = CLLocation(latitude: latitude, longitude: longitude)
         let fallbackName = fallback.isEmpty ? "현재 위치" : fallback
-        return await localizedCityNameWithMapKit(location: location, fallbackName: fallbackName)
+        if #available(iOS 26.0, *) {
+            return await localizedCityNameWithMapKit(location: location, fallbackName: fallbackName)
+        }
+        return await localizedCityNameWithCoreLocation(location: location, fallbackName: fallbackName)
     }
 
+    @available(iOS 26.0, *)
     private func localizedCityNameWithMapKit(location: CLLocation, fallbackName: String) async -> String {
         do {
             guard let request = MKReverseGeocodingRequest(location: location) else {
@@ -95,6 +99,24 @@ actor WeatherService {
                 ?? fallbackName
         } catch {
             return fallbackName
+        }
+    }
+
+    private func localizedCityNameWithCoreLocation(location: CLLocation, fallbackName: String) async -> String {
+        await withCheckedContinuation { continuation in
+            let geocoder = CLGeocoder()
+            geocoder.reverseGeocodeLocation(
+                location,
+                preferredLocale: Locale(identifier: "ko_KR")
+            ) { [geocoder] placemarks, _ in
+                _ = geocoder
+                let placemark = placemarks?.first
+                let cityName = placemark?.locality
+                    ?? placemark?.subAdministrativeArea
+                    ?? placemark?.administrativeArea
+                    ?? fallbackName
+                continuation.resume(returning: cityName)
+            }
         }
     }
 

@@ -338,7 +338,7 @@ enum LongdyError: LocalizedError {
 }
 
 enum DateKey {
-    static func dateKey(for date: Date = Date()) -> String {
+    nonisolated static func dateKey(for date: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy-MM-dd"

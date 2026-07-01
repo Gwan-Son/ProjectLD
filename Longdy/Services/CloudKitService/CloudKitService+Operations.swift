@@ -305,10 +305,4 @@ extension CloudKitService {
             .reduce(into: "") { $0.append($1) }
     }
 
-    static func dateKey(for date: Date = Date()) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
 }

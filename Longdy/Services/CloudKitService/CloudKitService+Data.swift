@@ -92,7 +92,7 @@ extension CloudKitService {
         let thirtyDaysLater = Calendar.current.date(byAdding: .day, value: 30, to: now) ?? now
         let checkIns = try await checkInRecords
             .compactMap(Self.decodeCheckIn)
-            .filter { !Self.isCheckInExpired($0) }
+            .filter { !$0.isExpired }
             .sorted { $0.createdAt > $1.createdAt }
         let events = try await eventRecords
             .compactMap(Self.decodeEvent)
@@ -101,7 +101,7 @@ extension CloudKitService {
         let careItems = try await careItemRecords
             .compactMap(Self.decodeCareItem)
             .filter { item in
-                item.dateKey == Self.dateKey() || Self.careRepeatRule(item.repeatRule, appliesTo: now, createdAt: item.createdAt)
+                item.dateKey == DateKey.dateKey() || item.repeatRule.applies(to: now, createdAt: item.createdAt)
             }
             .sorted { $0.createdAt < $1.createdAt }
         return (checkIns, events, careItems)
@@ -265,7 +265,7 @@ extension CloudKitService {
         record[SharedField.appleUserId] = userId as CKRecordValue
         record[MemoryField.type] = "photo" as CKRecordValue
         record[MemoryField.text] = text as CKRecordValue
-        record[MemoryField.dateKey] = Self.dateKey(for: now) as CKRecordValue
+        record[MemoryField.dateKey] = DateKey.dateKey(for: now) as CKRecordValue
         record[SharedField.createdAt] = now as CKRecordValue
 
         var temporaryURLs: [URL] = []
@@ -294,7 +294,7 @@ extension CloudKitService {
             userId: userId,
             text: text,
             storageURL: nil,
-            dateKey: Self.dateKey(for: now),
+            dateKey: DateKey.dateKey(for: now),
             createdAt: now
         )
     }
@@ -340,7 +340,7 @@ extension CloudKitService {
             userId: record[SharedField.appleUserId] as? String ?? "",
             text: text,
             storageURL: nil,
-            dateKey: record[MemoryField.dateKey] as? String ?? Self.dateKey(),
+            dateKey: record[MemoryField.dateKey] as? String ?? DateKey.dateKey(),
             createdAt: record[SharedField.createdAt] as? Date ?? Date()
         )
     }
@@ -363,24 +363,4 @@ extension CloudKitService {
         )
     }
 
-    private static func isCheckInExpired(_ checkIn: CheckIn) -> Bool {
-        guard let expiresAt = checkIn.expiresAt else { return false }
-        return expiresAt <= Date()
-    }
-
-    private static func careRepeatRule(_ rule: CareRepeatRule, appliesTo date: Date, createdAt: Date) -> Bool {
-        let calendar = Calendar.current
-        switch rule {
-        case .once:
-            return calendar.isDate(date, inSameDayAs: createdAt)
-        case .daily:
-            return true
-        case .weekdays:
-            return !calendar.isDateInWeekend(date)
-        case .weekends:
-            return calendar.isDateInWeekend(date)
-        case .weekly:
-            return calendar.component(.weekday, from: date) == calendar.component(.weekday, from: createdAt)
-        }
-    }
 }

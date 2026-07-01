@@ -135,7 +135,7 @@ extension CloudKitService {
         return CareItem(
             id: record.recordID.recordName,
             userId: userId,
-            dateKey: record["dateKey"] as? String ?? dateKey(),
+            dateKey: record["dateKey"] as? String ?? DateKey.dateKey(),
             title: title,
             iconName: record["iconName"] as? String ?? "drink-water",
             repeatRule: CareRepeatRule(rawValue: record["repeatRule"] as? String ?? "") ?? .once,
@@ -155,7 +155,7 @@ extension CloudKitService {
             text: record[MemoryField.text] as? String ?? "",
             storageURL: cachedMemoryAssetURL(from: record, field: MemoryField.asset, folder: "Originals")?.absoluteString,
             thumbnailURL: cachedMemoryAssetURL(from: record, field: MemoryField.thumbnailAsset, folder: "Thumbnails")?.absoluteString,
-            dateKey: record[MemoryField.dateKey] as? String ?? Self.dateKey(for: record[SharedField.createdAt] as? Date ?? Date()),
+            dateKey: record[MemoryField.dateKey] as? String ?? DateKey.dateKey(for: record[SharedField.createdAt] as? Date ?? Date()),
             createdAt: record[SharedField.createdAt] as? Date ?? Date()
         )
     }
