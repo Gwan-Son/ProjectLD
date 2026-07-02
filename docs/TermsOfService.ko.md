@@ -1,3 +1,10 @@
+---
+layout: default
+title: Our Bridge 이용약관
+description: Our Bridge 이용약관
+permalink: /terms/
+---
+
 # Our Bridge 이용약관
 
 본 약관은 Our Bridge(아워브릿지, 이하 "운영자")가 제공하는 Our Bridge 앱 및 관련 서비스(이하 "서비스")의 이용 조건을 정합니다.
@@ -148,4 +155,3 @@
 - 운영자: Our Bridge(아워브릿지)
 - 대표자: 심관혁
 - 이메일: id1593572580@gmail.com
-

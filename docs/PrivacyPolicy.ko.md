@@ -1,3 +1,10 @@
+---
+layout: default
+title: Our Bridge 개인정보처리방침
+description: Our Bridge 개인정보처리방침
+permalink: /privacy/
+---
+
 # Our Bridge 개인정보처리방침
 
 Our Bridge(아워브릿지, 이하 "서비스")는 이용자의 개인정보를 중요하게 생각하며, 「개인정보 보호법」 등 관련 법령을 준수합니다. 본 방침은 서비스가 어떤 개인정보를 처리하고 어떻게 보호하는지 설명합니다.
