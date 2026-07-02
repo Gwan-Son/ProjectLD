@@ -15,6 +15,10 @@ enum HomeCardOrderStore {
         UserDefaults.standard.set(order.map(\.rawValue), forKey: key(userId))
     }
 
+    static func clear(userId: String) {
+        UserDefaults.standard.removeObject(forKey: key(userId))
+    }
+
     private static func key(_ userId: String) -> String {
         "longdy.homeCardOrder.\(userId)"
     }

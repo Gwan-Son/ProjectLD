@@ -8,3 +8,5 @@ ProjectDocs
 Longdy.xcodeproj/xcuserdata/simgwanhyeok.xcuserdatad/xcschemes/xcschememanagement.plist
 *.xcconfig
 Assets
+Docs/CloudKitMigrationPlan.md
+Docs/LegalReleaseChecklist.md

@@ -2,6 +2,58 @@ import CloudKit
 import Foundation
 
 extension CloudKitService {
+    func deleteAccount(session: AppleSession, coupleId: String?) async throws {
+        try await ensureAccountAvailable()
+
+        if let coupleId {
+            let ref = coupleReference(from: coupleId)
+            let rootRecord: CKRecord?
+            do {
+                rootRecord = try await fetchRecord(recordID: ref.recordID, database: ref.database)
+            } catch let error as CKError where isRevokedCoupleAccessError(error) {
+                rootRecord = nil
+            }
+
+            if let rootRecord {
+                let ownerId = stringValue(rootRecord[CoupleRootField.ownerAppleUserId])
+                let partnerId = stringValue(rootRecord[CoupleRootField.partnerAppleUserId])
+                if ownerId == session.appleUserId {
+                    _ = try await deleteCoupleSpace(coupleId: coupleId, session: session)
+                } else if partnerId == session.appleUserId {
+                    try await deleteMemberRecords(coupleId: coupleId, userId: session.appleUserId)
+                    _ = try await disconnectCouple(coupleId: coupleId, session: session)
+                }
+            }
+        }
+
+        try await deleteIfExists(recordID: currentUserProfileRecordID, database: privateDatabase)
+        clearLocalAssetsAfterCoupleDeletion()
+    }
+
+    private func deleteMemberRecords(coupleId: String, userId: String) async throws {
+        let ref = coupleReference(from: coupleId)
+        let ownershipFields = [
+            RecordType.checkIn: SharedField.appleUserId,
+            RecordType.coupleEvent: "ownerUserId",
+            RecordType.careItem: SharedField.appleUserId,
+            RecordType.memoryNote: SharedField.appleUserId,
+            RecordType.bridgeActivity: SharedField.appleUserId
+        ]
+        var recordIDs: [CKRecord.ID] = []
+
+        for (recordType, ownershipField) in ownershipFields {
+            let records = try await optionalQueryRecords(
+                type: recordType,
+                coupleId: coupleId,
+                database: ref.database
+            )
+            recordIDs.append(contentsOf: records.compactMap { record in
+                stringValue(record[ownershipField]) == userId ? record.recordID : nil
+            })
+        }
+        try await deleteRecords(recordIDs, database: ref.database)
+    }
+
     func resetUserProfileAfterCoupleDeletion(session: AppleSession) async throws -> LongdyUser {
         let record = try await fetchRecord(recordID: currentUserProfileRecordID)
             ?? CKRecord(recordType: RecordType.userProfile, recordID: currentUserProfileRecordID)

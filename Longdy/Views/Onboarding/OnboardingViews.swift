@@ -145,6 +145,7 @@ struct CoupleSetupView: View {
     @State private var showingDeleteSpaceConfirmation = false
     @State private var showingCopyAlert = false
     @State private var showingConnectionHelp = false
+    @State private var showingDeleteAccountConfirmation = false
 
     var body: some View {
         ZStack {
@@ -159,13 +160,43 @@ struct CoupleSetupView: View {
                     divider
                     joinSection
 
-                    Button("연결에 도움이 필요하신가요?") {
-                        showingConnectionHelp = true
-                    }
+                    VStack(spacing: 20) {
+                        Button("연결에 도움이 필요하신가요?") {
+                            showingConnectionHelp = true
+                        }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(CoupleSetupPalette.muted)
                         .underline(color: CoupleSetupPalette.line)
-                        .padding(.top, 64)
+
+                        Button(role: .destructive) {
+                            showingDeleteAccountConfirmation = true
+                        } label: {
+                            Label(
+                                appState.isDeletingAccount ? "회원탈퇴 처리 중" : "회원탈퇴",
+                                systemImage: "person.crop.circle.badge.minus"
+                            )
+                            .font(.footnote.weight(.semibold))
+                        }
+                        .disabled(appState.isDeletingAccount)
+
+                        if appState.isDeletingAccount {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("iCloud 데이터를 삭제하고 있어요.")
+                                    .font(.caption)
+                                    .foregroundStyle(CoupleSetupPalette.muted)
+                            }
+                        }
+
+                        if let error = appState.accountDeletionErrorMessage {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(CoupleSetupPalette.error)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .padding(.top, 64)
 
                     if let error = viewModel.errorMessage {
                         Text(error)
@@ -180,6 +211,7 @@ struct CoupleSetupView: View {
                 .padding(.bottom, 64)
                 .frame(maxWidth: .infinity)
             }
+            .disabled(appState.isDeletingAccount)
         }
         .alert("복사 완료", isPresented: $showingCopyAlert) {
             Button("확인", role: .cancel) {}
@@ -216,6 +248,14 @@ struct CoupleSetupView: View {
         } message: {
             Text("기분 공유, 일정, 챙김, 오늘의 한 장과 연결 정보가 iCloud에서 삭제되며 복구할 수 없어요.")
         }
+        .alert("회원탈퇴를 진행할까요?", isPresented: $showingDeleteAccountConfirmation) {
+            Button("취소", role: .cancel) {}
+            Button("영구 삭제", role: .destructive) {
+                appState.deleteAccount()
+            }
+        } message: {
+            Text("프로필과 생성한 초대, Our Bridge에 저장된 앱 데이터가 삭제되며 복구할 수 없어요. Apple 계정 자체는 삭제되지 않아요.")
+        }
         .task(id: appState.currentProfile?.partnerCoupleId) {
             await pollPendingCoupleConnection()
         }
@@ -224,6 +264,7 @@ struct CoupleSetupView: View {
     private func pollPendingCoupleConnection() async {
         guard appState.currentProfile?.partnerCoupleId != nil else { return }
         while !Task.isCancelled {
+            guard !appState.isDeletingAccount else { return }
             if (appState.couple?.memberIds.count ?? 0) >= 2 { return }
             await appState.refreshCoupleStatus()
             try? await Task.sleep(for: .seconds(3))

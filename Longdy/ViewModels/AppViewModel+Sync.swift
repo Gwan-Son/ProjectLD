@@ -125,6 +125,8 @@ extension AppViewModel {
         lastCoupleDataRefreshAt = nil
         isDisconnectingCouple = false
         isDeletingCoupleSpace = false
+        isDeletingAccount = false
+        accountDeletionErrorMessage = nil
     }
 
     func bindCoupleIfNeeded(_ coupleId: String?) {

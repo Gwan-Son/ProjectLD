@@ -178,6 +178,7 @@ struct SettingsView: View {
     @StateObject private var profilePhotoViewModel = ProfilePhotoViewModel()
     @State private var selectedProfilePhoto: PhotosPickerItem?
     @State private var showingProfilePhotoRemovalAlert = false
+    @State private var showingDeleteAccountAlert = false
 
     var body: some View {
         NavigationStack {
@@ -313,21 +314,48 @@ struct SettingsView: View {
                     }
                 }
 
-                Section {
-                    Button(role: .destructive) {
+                Section("계정") {
+                    Button {
                         dismiss()
                         appState.signOut()
                     } label: {
                         Label("로그아웃", systemImage: "rectangle.portrait.and.arrow.right")
                     }
+                    .disabled(accountOperationInProgress)
+
+                    Button(role: .destructive) {
+                        showingDeleteAccountAlert = true
+                    } label: {
+                        Label(
+                            appState.isDeletingAccount ? "회원탈퇴 처리 중" : "회원탈퇴",
+                            systemImage: "person.crop.circle.badge.minus"
+                        )
+                    }
+                    .disabled(accountOperationInProgress)
+
+                    if appState.isDeletingAccount {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("iCloud 데이터를 삭제하고 있어요. 앱을 종료하지 마세요.")
+                                .font(.caption)
+                                .foregroundStyle(LongdyColors.muted)
+                        }
+                    }
+
+                    if let error = appState.accountDeletionErrorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
             }
+            .disabled(appState.isDeletingAccount)
             .navigationTitle("설정")
             .toolbar {
                 Button("닫기") {
                     dismiss()
                 }
-                .disabled(appState.isDisconnectingCouple || appState.isDeletingCoupleSpace)
+                .disabled(accountOperationInProgress)
             }
             .alert("복사 완료", isPresented: $showingCopyAlert) {
                 Button("확인", role: .cancel) {}
@@ -349,6 +377,14 @@ struct SettingsView: View {
                 }
             } message: {
                 Text("기분 공유, 일정, 챙김, 오늘의 한 장과 연결 정보가 iCloud에서 삭제돼요. 상대도 더 이상 접근할 수 없으며 복구할 수 없어요.")
+            }
+            .alert("회원탈퇴를 진행할까요?", isPresented: $showingDeleteAccountAlert) {
+                Button("취소", role: .cancel) {}
+                Button("영구 삭제", role: .destructive) {
+                    appState.deleteAccount()
+                }
+            } message: {
+                Text(deleteAccountAlertMessage)
             }
             .alert("프로필 사진을 제거할까요?", isPresented: $showingProfilePhotoRemovalAlert) {
                 Button("취소", role: .cancel) {}
@@ -373,9 +409,7 @@ struct SettingsView: View {
                 loadAndSaveProfilePhoto(item)
             }
         }
-        .interactiveDismissDisabled(
-            appState.isDisconnectingCouple || appState.isDeletingCoupleSpace
-        )
+        .interactiveDismissDisabled(accountOperationInProgress)
     }
 
     private var profilePhotoControls: some View {
@@ -466,6 +500,22 @@ struct SettingsView: View {
             return "상대의 공유 접근 권한과 프로필 정보를 제거하고 기존 초대 코드를 폐기해요. 커플 공간 데이터는 유지돼요."
         }
         return "내 공유 접근 권한과 연결 정보가 제거돼요. 커플 공간 데이터는 생성자에게 남아요."
+    }
+
+    private var accountOperationInProgress: Bool {
+        appState.isDisconnectingCouple
+            || appState.isDeletingCoupleSpace
+            || appState.isDeletingAccount
+    }
+
+    private var deleteAccountAlertMessage: String {
+        if appState.isCurrentUserCoupleOwner {
+            return "내 프로필과 커플 공간의 기분, 일정, 챙김, 사진이 모두 삭제돼요. 상대도 공간에 접근할 수 없으며 복구할 수 없어요. Apple 계정 자체는 삭제되지 않아요."
+        }
+        if appState.currentProfile?.partnerCoupleId != nil {
+            return "내 프로필과 내가 등록한 기분, 일정, 챙김, 사진을 삭제하고 커플 공간에서 나가요. 복구할 수 없어요. Apple 계정 자체는 삭제되지 않아요."
+        }
+        return "Our Bridge에 저장된 내 프로필과 앱 데이터를 삭제해요. 복구할 수 없어요. Apple 계정 자체는 삭제되지 않아요."
     }
 
     private func loadAndSaveProfilePhoto(_ item: PhotosPickerItem?) {

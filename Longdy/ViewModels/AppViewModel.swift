@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import UserNotifications
 
 @MainActor
 final class AppViewModel: ObservableObject {
@@ -22,6 +23,8 @@ final class AppViewModel: ObservableObject {
     @Published var showReplaceInviteConfirmation = false
     @Published var isDisconnectingCouple = false
     @Published var isDeletingCoupleSpace = false
+    @Published var isDeletingAccount = false
+    @Published var accountDeletionErrorMessage: String?
     @Published var isSavingProfile = false
     @Published var isRefreshingLocationWeather = false
 
@@ -338,6 +341,33 @@ final class AppViewModel: ObservableObject {
                 errorMessage = error.longdyUserMessage
             }
             isDeletingCoupleSpace = false
+        }
+    }
+
+    func deleteAccount() {
+        guard !isDeletingAccount, let session = appleSession else { return }
+        isDeletingAccount = true
+
+        Task {
+            do {
+                errorMessage = nil
+                accountDeletionErrorMessage = nil
+                try await cloudKitService.deleteAccount(
+                    session: session,
+                    coupleId: currentProfile?.partnerCoupleId
+                )
+                LocalCoupleDataCache.clear(userId: session.appleUserId)
+                HomeCardOrderStore.clear(userId: session.appleUserId)
+                PendingCloudKitShareStore.shared.discard()
+                UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+                UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+                appleSessionStore.clear()
+                appleSession = nil
+                resetSessionData()
+            } catch {
+                accountDeletionErrorMessage = error.longdyUserMessage
+                isDeletingAccount = false
+            }
         }
     }
 
