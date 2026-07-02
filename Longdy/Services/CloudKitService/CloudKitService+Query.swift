@@ -22,18 +22,6 @@ extension CloudKitService {
             records.forEach { recordsById[$0.recordID.recordName] = $0 }
         }
 
-        if recordsById.isEmpty {
-            let query = CKQuery(recordType: type, predicate: NSPredicate(value: true))
-            let records = try await fetchRecords(matching: query, database: database, zoneID: ref.recordID.zoneID)
-            records
-                .filter { record in
-                    let rootName = stringValue(record[SharedField.coupleRootRecordName])
-                    let parentName = record.parent?.recordID.recordName
-                    return lookupKeys.contains(rootName ?? "") || parentName == ref.recordID.recordName
-                }
-                .forEach { recordsById[$0.recordID.recordName] = $0 }
-        }
-
         return Array(recordsById.values)
     }
 
@@ -99,14 +87,26 @@ extension CloudKitService {
     }
 
     private func fetchRecords(matching query: CKQuery, database: CKDatabase, zoneID: CKRecordZone.ID) async throws -> [CKRecord] {
-        let result = try await database.records(
+        var result = try await database.records(
             matching: query,
             inZoneWith: zoneID,
             desiredKeys: nil,
             resultsLimit: CKQueryOperation.maximumResults
         )
-        return try result.matchResults.map { _, recordResult in
+        var records = try result.matchResults.map { _, recordResult in
             try recordResult.get()
         }
+
+        while let cursor = result.queryCursor {
+            result = try await database.records(
+                continuingMatchFrom: cursor,
+                desiredKeys: nil,
+                resultsLimit: CKQueryOperation.maximumResults
+            )
+            records.append(contentsOf: try result.matchResults.map { _, recordResult in
+                try recordResult.get()
+            })
+        }
+        return records
     }
 }

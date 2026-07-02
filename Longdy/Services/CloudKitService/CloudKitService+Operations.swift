@@ -240,7 +240,11 @@ extension CloudKitService {
         record[SharedField.updatedAt] = Date() as CKRecordValue
     }
 
-    func modify(recordsToSave: [CKRecord], recordIDsToDelete: [CKRecord.ID]) async throws -> [CKRecord] {
+    func modify(
+        recordsToSave: [CKRecord],
+        recordIDsToDelete: [CKRecord.ID],
+        database: CKDatabase? = nil
+    ) async throws -> [CKRecord] {
         try await withCheckedThrowingContinuation { continuation in
             let operation = CKModifyRecordsOperation(recordsToSave: recordsToSave, recordIDsToDelete: recordIDsToDelete)
             operation.savePolicy = .changedKeys
@@ -252,7 +256,18 @@ extension CloudKitService {
                     continuation.resume(throwing: error)
                 }
             }
-            privateDatabase.add(operation)
+            (database ?? privateDatabase).add(operation)
+        }
+    }
+
+    func deleteRecords(_ recordIDs: [CKRecord.ID], database: CKDatabase) async throws {
+        for batchStart in stride(from: 0, to: recordIDs.count, by: 200) {
+            let batchEnd = min(batchStart + 200, recordIDs.count)
+            _ = try await modify(
+                recordsToSave: [],
+                recordIDsToDelete: Array(recordIDs[batchStart..<batchEnd]),
+                database: database
+            )
         }
     }
 

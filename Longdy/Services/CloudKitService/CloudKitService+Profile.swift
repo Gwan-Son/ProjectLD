@@ -2,6 +2,40 @@ import CloudKit
 import Foundation
 
 extension CloudKitService {
+    func resetUserProfileAfterCoupleDeletion(session: AppleSession) async throws -> LongdyUser {
+        let record = try await fetchRecord(recordID: currentUserProfileRecordID)
+            ?? CKRecord(recordType: RecordType.userProfile, recordID: currentUserProfileRecordID)
+        let now = Date()
+
+        record[UserProfileField.appleUserId] = session.appleUserId as CKRecordValue
+        record[UserProfileField.email] = session.email as CKRecordValue?
+        record[UserProfileField.displayName] = "나" as CKRecordValue
+        record[UserProfileField.nickname] = "나" as CKRecordValue
+        record[UserProfileField.profilePhotoAsset] = nil
+        record[UserProfileField.coupleRootRecordName] = nil
+        if record[UserProfileField.createdAt] == nil {
+            record[UserProfileField.createdAt] = now as CKRecordValue
+        }
+        record[UserProfileField.updatedAt] = now as CKRecordValue
+
+        let savedRecord = try await save(record)
+        clearLocalAssetsAfterCoupleDeletion()
+        return decodeUserProfile(from: savedRecord, session: session)
+    }
+
+    func clearLocalAssetsAfterCoupleDeletion() {
+        guard let cachesDirectory = try? FileManager.default.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ) else { return }
+
+        ["ProfilePhotos", "MemoryAssets", "PendingMemoryUploads"]
+            .map { cachesDirectory.appendingPathComponent($0, isDirectory: true) }
+            .forEach { try? FileManager.default.removeItem(at: $0) }
+    }
+
     func upsertUserProfile(session: AppleSession, nickname: String? = nil, cityName: String = "Seoul", timezoneId: String = TimeZone.current.identifier) async throws -> LongdyUser {
         let status = try await fetchAccountStatus()
         guard status == .available else {

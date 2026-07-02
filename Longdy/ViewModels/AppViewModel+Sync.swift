@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 
 extension AppViewModel {
@@ -15,10 +16,23 @@ extension AppViewModel {
         let previousMemoryIDs = Set(memories.map(\.id))
         let previousEventIDs = Set(events.map(\.id))
 
-        if let refreshedCouple = try? await cloudKitService.fetchCoupleRoot(recordName: coupleId) {
-            couple = refreshedCouple
-            bindMembers(from: refreshedCouple)
-            saveCurrentCoupleCache()
+        do {
+            if let refreshedCouple = try await cloudKitService.fetchCoupleRoot(recordName: coupleId) {
+                couple = refreshedCouple
+                bindMembers(from: refreshedCouple)
+                saveCurrentCoupleCache()
+            } else {
+                await clearStaleCoupleConnection()
+                return true
+            }
+        } catch {
+            if isMissingCoupleAccessError(error) {
+                await clearStaleCoupleConnection()
+                return true
+            }
+            #if DEBUG
+            print("Longdy CloudKit root refresh failed: \(error.longdyUserMessage)")
+            #endif
         }
 
         var didLoad = false
@@ -62,11 +76,13 @@ extension AppViewModel {
                     await loadCoupleData(coupleId: refreshedCouple.id, forceRefresh: true)
                 }
             } else {
-                currentProfile?.partnerCoupleId = nil
-                couple = nil
-                members = []
+                await clearStaleCoupleConnection()
             }
         } catch {
+            if isMissingCoupleAccessError(error) {
+                await clearStaleCoupleConnection()
+                return
+            }
             errorMessage = error.longdyUserMessage
         }
     }
@@ -75,7 +91,7 @@ extension AppViewModel {
         while !Task.isCancelled {
             guard coupleId != nil else { return }
             await refreshCoupleStatus()
-            try? await Task.sleep(for: .seconds(60))
+            try? await Task.sleep(for: .seconds(5))
         }
     }
 
@@ -107,6 +123,8 @@ extension AppViewModel {
         hasRequestedCurrentLocation = false
         isRefreshingCoupleData = false
         lastCoupleDataRefreshAt = nil
+        isDisconnectingCouple = false
+        isDeletingCoupleSpace = false
     }
 
     func bindCoupleIfNeeded(_ coupleId: String?) {
@@ -129,9 +147,7 @@ extension AppViewModel {
             do {
                 let couple = try await cloudKitService.fetchCoupleRoot(recordName: coupleId)
                 if couple == nil {
-                    self.currentProfile?.partnerCoupleId = nil
-                    self.couple = nil
-                    self.members = []
+                    await self.clearStaleCoupleConnection()
                     return
                 }
                 self.couple = couple
@@ -151,6 +167,11 @@ extension AppViewModel {
                     Task { await self.loadCoupleData(coupleId: resolvedCoupleId, forceRefresh: true) }
                 }
             } catch {
+                if self.isMissingCoupleAccessError(error) {
+                    await self.clearStaleCoupleConnection()
+                    self.isLoadingCoupleData = false
+                    return
+                }
                 self.errorMessage = error.longdyUserMessage
                 self.isLoadingCoupleData = false
             }
@@ -169,6 +190,40 @@ extension AppViewModel {
         }
         members = nextMembers.filter { couple.memberIds.contains($0.id) }
         members.forEach { loadWeather(for: $0) }
+    }
+
+    func clearStaleCoupleConnection() async {
+        if let appleSession {
+            if let resetProfile = try? await cloudKitService.resetUserProfileAfterCoupleDeletion(
+                session: appleSession
+            ) {
+                currentProfile = resetProfile
+            } else {
+                currentProfile?.partnerCoupleId = nil
+            }
+            LocalCoupleDataCache.clear(userId: appleSession.appleUserId)
+        }
+        couple = nil
+        members = []
+        checkIns = []
+        events = []
+        careItems = []
+        memories = []
+        bridgeActivities = []
+        weatherByUserId = [:]
+        recentlyCommittedCareItemIDs = [:]
+        recentlyCommittedMemoryIDs = [:]
+        hasLoadedCoupleData = false
+    }
+
+    func isMissingCoupleAccessError(_ error: Error) -> Bool {
+        guard let cloudKitError = error as? CKError else { return false }
+        switch cloudKitError.code {
+        case .unknownItem, .permissionFailure, .zoneNotFound, .userDeletedZone:
+            return true
+        default:
+            return false
+        }
     }
 
     @discardableResult
@@ -334,4 +389,3 @@ extension AppViewModel {
         HomeCardOrderStore.save(homeCardOrder, userId: userId)
     }
 }
-

@@ -21,6 +21,7 @@ final class AppViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var showReplaceInviteConfirmation = false
     @Published var isDisconnectingCouple = false
+    @Published var isDeletingCoupleSpace = false
     @Published var isSavingProfile = false
     @Published var isRefreshingLocationWeather = false
 
@@ -52,6 +53,11 @@ final class AppViewModel: ObservableObject {
 
     var userId: String? { appleSession?.appleUserId }
     var coupleId: String? { currentProfile?.partnerCoupleId }
+
+    var isCurrentUserCoupleOwner: Bool {
+        guard let userId else { return false }
+        return couple?.memberIds.first == userId
+    }
 
     var partner: LongdyUser? {
         guard let userId else { return nil }
@@ -268,13 +274,48 @@ final class AppViewModel: ObservableObject {
         Task {
             do {
                 errorMessage = nil
-                try await cloudKitService.disconnectCouple(coupleId: coupleId, session: session)
+                let result = try await cloudKitService.disconnectCouple(coupleId: coupleId, session: session)
                 if var profile = try await cloudKitService.fetchCurrentUserProfile(session: session) {
-                    profile.partnerCoupleId = nil
+                    profile.partnerCoupleId = result.retainedCouple?.id
                     currentProfile = profile
                 } else {
-                    currentProfile?.partnerCoupleId = nil
+                    currentProfile?.partnerCoupleId = result.retainedCouple?.id
                 }
+                if let userId = appleSession?.appleUserId {
+                    LocalCoupleDataCache.clear(userId: userId)
+                }
+                couple = result.retainedCouple
+                bindMembers(from: result.retainedCouple)
+                checkIns = []
+                events = []
+                careItems = []
+                memories = []
+                bridgeActivities = []
+                weatherByUserId = [:]
+                recentlyCommittedCareItemIDs = [:]
+                recentlyCommittedMemoryIDs = [:]
+                if result.retainedCouple != nil {
+                    saveCurrentCoupleCache()
+                }
+            } catch {
+                errorMessage = error.longdyUserMessage
+            }
+            isDisconnectingCouple = false
+        }
+    }
+
+    func deleteCoupleSpace() {
+        guard !isDeletingCoupleSpace else { return }
+        guard let session = appleSession, let coupleId = currentProfile?.partnerCoupleId else { return }
+        isDeletingCoupleSpace = true
+
+        Task {
+            do {
+                errorMessage = nil
+                currentProfile = try await cloudKitService.deleteCoupleSpace(
+                    coupleId: coupleId,
+                    session: session
+                )
                 if let userId = appleSession?.appleUserId {
                     LocalCoupleDataCache.clear(userId: userId)
                 }
@@ -285,10 +326,18 @@ final class AppViewModel: ObservableObject {
                 careItems = []
                 memories = []
                 bridgeActivities = []
+                weatherByUserId = [:]
+                recentlyCommittedCareItemIDs = [:]
+                recentlyCommittedMemoryIDs = [:]
+                hasLoadedCoupleData = false
+                isLoadingCoupleData = false
+                isRefreshingCoupleData = false
+                lastCoupleDataRefreshAt = nil
+                selectedMainTab = .home
             } catch {
                 errorMessage = error.longdyUserMessage
             }
-            isDisconnectingCouple = false
+            isDeletingCoupleSpace = false
         }
     }
 

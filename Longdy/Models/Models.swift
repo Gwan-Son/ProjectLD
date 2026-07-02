@@ -29,6 +29,10 @@ struct Couple: Identifiable, Equatable, Codable {
     var createdAt: Date
 }
 
+struct CoupleDisconnectResult {
+    var retainedCouple: Couple?
+}
+
 enum Mood: String, CaseIterable, Identifiable, Codable {
     case clear = "맑음"
     case calm = "편안"

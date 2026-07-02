@@ -91,18 +91,60 @@ extension CloudKitService {
         try await ensureAccountAvailable()
         try await ensureCoupleZone()
 
-        if let currentCoupleId {
-            let ref = coupleReference(from: currentCoupleId)
-            if let currentRoot = try await fetchRecord(recordID: ref.recordID, database: ref.database) {
-                let partnerId = stringValue(currentRoot[CoupleRootField.partnerAppleUserId])
-                guard partnerId == nil else {
-                    throw LongdyError.invalidInput("이미 연결된 커플 공간은 초대를 재생성할 수 없어요.")
-                }
-                try await deleteIfExists(recordID: ref.recordID, database: ref.database)
-            }
+        guard let currentCoupleId else {
+            return try await createCoupleRootShare(session: session)
         }
 
-        return try await createCoupleRootShare(session: session)
+        let ref = coupleReference(from: currentCoupleId)
+        guard ref.database.databaseScope == .private,
+              let rootRecord = try await fetchRecord(recordID: ref.recordID, database: ref.database) else {
+            return try await createCoupleRootShare(session: session)
+        }
+        guard stringValue(rootRecord[CoupleRootField.ownerAppleUserId]) == session.appleUserId else {
+            throw LongdyError.invalidInput("커플 공간을 만든 사람만 초대를 재생성할 수 있어요.")
+        }
+        guard stringValue(rootRecord[CoupleRootField.partnerAppleUserId]) == nil else {
+            throw LongdyError.invalidInput("이미 연결된 커플 공간은 초대를 재생성할 수 없어요.")
+        }
+
+        if let oldCode = stringValue(rootRecord[CoupleRootField.inviteCode]) {
+            try await deleteIfExists(
+                recordID: CKRecord.ID(recordName: inviteCodeRecordName(oldCode)),
+                database: publicDatabase
+            )
+        }
+
+        let inviteCode = Self.makeInviteCode()
+        rootRecord[CoupleRootField.inviteCode] = inviteCode as CKRecordValue
+        rootRecord[CoupleRootField.updatedAt] = Date() as CKRecordValue
+
+        let share: CKShare
+        if let shareRecordID = rootRecord.share?.recordID,
+           let existingShare = try await fetchRecord(recordID: shareRecordID, database: privateDatabase) as? CKShare {
+            share = existingShare
+        } else {
+            share = CKShare(rootRecord: rootRecord)
+            share[CKShare.SystemFieldKey.title] = "Our Bridge 초대" as CKRecordValue
+            share[CKShare.SystemFieldKey.shareType] = "kr.gwanson.Longdy.couple" as CKRecordValue
+        }
+        share.publicPermission = .readWrite
+
+        _ = try await modify(
+            recordsToSave: [rootRecord, share],
+            recordIDsToDelete: [],
+            database: privateDatabase
+        )
+        try await updateUserCoupleRoot(
+            session: session,
+            coupleRootRecordName: coupleReference(for: rootRecord.recordID, databaseScope: .private)
+        )
+        try await savePublicInviteCode(
+            code: inviteCode,
+            ownerAppleUserId: session.appleUserId,
+            shareURL: share.url
+        )
+
+        return (decodeCoupleRoot(from: rootRecord, databaseScope: .private, shareURL: nil), share)
     }
 
     func joinCouple(inviteCode rawCode: String, session: AppleSession, currentCoupleId: String?) async throws -> Couple {
@@ -148,30 +190,102 @@ extension CloudKitService {
         return couple
     }
 
-    func disconnectCouple(coupleId: String, session: AppleSession) async throws {
+    func disconnectCouple(coupleId: String, session: AppleSession) async throws -> CoupleDisconnectResult {
         try await ensureAccountAvailable()
         let ref = coupleReference(from: coupleId)
 
-        if let rootRecord = try await fetchRecord(recordID: ref.recordID, database: ref.database) {
-            let ownerId = stringValue(rootRecord[CoupleRootField.ownerAppleUserId])
-            let partnerId = stringValue(rootRecord[CoupleRootField.partnerAppleUserId])
-
-            if ownerId == session.appleUserId {
-                if let code = stringValue(rootRecord[CoupleRootField.inviteCode]) {
-                    try await deleteIfExists(
-                        recordID: CKRecord.ID(recordName: inviteCodeRecordName(code)),
-                        database: publicDatabase
-                    )
-                }
-                try await deleteIfExists(recordID: ref.recordID, database: ref.database)
-            } else if partnerId == session.appleUserId {
-                rootRecord[CoupleRootField.partnerAppleUserId] = nil
-                rootRecord[CoupleRootField.updatedAt] = Date() as CKRecordValue
-                _ = try await save(rootRecord, database: ref.database)
-            }
+        let fetchedRoot: CKRecord?
+        do {
+            fetchedRoot = try await fetchRecord(recordID: ref.recordID, database: ref.database)
+        } catch let error as CKError where isRevokedCoupleAccessError(error) {
+            _ = try await resetUserProfileAfterCoupleDeletion(session: session)
+            return CoupleDisconnectResult(retainedCouple: nil)
+        }
+        guard let rootRecord = fetchedRoot else {
+            _ = try await resetUserProfileAfterCoupleDeletion(session: session)
+            return CoupleDisconnectResult(retainedCouple: nil)
         }
 
-        try await clearUserCoupleRoot(session: session)
+        let ownerId = stringValue(rootRecord[CoupleRootField.ownerAppleUserId])
+        let partnerId = stringValue(rootRecord[CoupleRootField.partnerAppleUserId])
+
+        if ownerId == session.appleUserId {
+            try await invalidateInviteCode(in: rootRecord)
+            clearMemberSnapshot(in: rootRecord, prefix: .partner)
+            rootRecord[CoupleRootField.partnerAppleUserId] = nil
+            rootRecord[CoupleRootField.inviteCode] = nil
+            rootRecord[CoupleRootField.updatedAt] = Date() as CKRecordValue
+
+            if let shareRecordID = rootRecord.share?.recordID,
+               let share = try await fetchRecord(recordID: shareRecordID, database: privateDatabase) as? CKShare {
+                share.publicPermission = .none
+                _ = try await modify(
+                    recordsToSave: [rootRecord, share],
+                    recordIDsToDelete: [],
+                    database: privateDatabase
+                )
+            } else {
+                _ = try await save(rootRecord, database: privateDatabase)
+            }
+
+            let retained = decodeCoupleRoot(from: rootRecord, databaseScope: .private, shareURL: nil)
+            return CoupleDisconnectResult(retainedCouple: retained)
+        }
+
+        guard partnerId == session.appleUserId else {
+            throw LongdyError.invalidInput("현재 계정은 이 커플 공간의 구성원이 아니에요.")
+        }
+
+        clearMemberSnapshot(in: rootRecord, prefix: .partner)
+        rootRecord[CoupleRootField.partnerAppleUserId] = nil
+        rootRecord[CoupleRootField.inviteCode] = nil
+        rootRecord[CoupleRootField.updatedAt] = Date() as CKRecordValue
+        _ = try await save(rootRecord, database: sharedDatabase)
+
+        if let shareRecordID = rootRecord.share?.recordID {
+            try await deleteIfExists(recordID: shareRecordID, database: sharedDatabase)
+        }
+
+        _ = try await resetUserProfileAfterCoupleDeletion(session: session)
+        return CoupleDisconnectResult(retainedCouple: nil)
+    }
+
+    func deleteCoupleSpace(coupleId: String, session: AppleSession) async throws -> LongdyUser {
+        try await ensureAccountAvailable()
+        let ref = coupleReference(from: coupleId)
+        guard ref.database.databaseScope == .private,
+              let rootRecord = try await fetchRecord(recordID: ref.recordID, database: ref.database) else {
+            return try await resetUserProfileAfterCoupleDeletion(session: session)
+        }
+        guard stringValue(rootRecord[CoupleRootField.ownerAppleUserId]) == session.appleUserId else {
+            throw LongdyError.invalidInput("커플 공간을 만든 사람만 공간을 삭제할 수 있어요.")
+        }
+
+        try await invalidateInviteCode(in: rootRecord)
+
+        let recordTypes = [
+            RecordType.checkIn,
+            RecordType.coupleEvent,
+            RecordType.careItem,
+            RecordType.memoryNote,
+            RecordType.bridgeActivity
+        ]
+        var childRecordIDs: [CKRecord.ID] = []
+        for recordType in recordTypes {
+            let records = try await optionalQueryRecords(
+                type: recordType,
+                coupleId: coupleId,
+                database: privateDatabase
+            )
+            childRecordIDs.append(contentsOf: records.map(\.recordID))
+        }
+        try await deleteRecords(childRecordIDs, database: privateDatabase)
+
+        if let shareRecordID = rootRecord.share?.recordID {
+            try await deleteIfExists(recordID: shareRecordID, database: privateDatabase)
+        }
+        try await deleteIfExists(recordID: rootRecord.recordID, database: privateDatabase)
+        return try await resetUserProfileAfterCoupleDeletion(session: session)
     }
 
     func canReplaceWithIncomingShare(currentCoupleId: String, session: AppleSession) async throws -> Bool {
@@ -217,6 +331,35 @@ extension CloudKitService {
            let url = URL(string: urlText),
            url.isFileURL {
             record[fields.profilePhotoAsset] = CKAsset(fileURL: url)
+        }
+    }
+
+    func clearMemberSnapshot(in record: CKRecord, prefix: MemberSnapshotPrefix) {
+        let fields = memberSnapshotFields(for: prefix)
+        record[fields.displayName] = nil
+        record[fields.nickname] = nil
+        record[fields.cityName] = nil
+        record[fields.timezoneId] = nil
+        record[fields.latitude] = nil
+        record[fields.longitude] = nil
+        record[fields.locationUpdatedAt] = nil
+        record[fields.profilePhotoAsset] = nil
+    }
+
+    func invalidateInviteCode(in rootRecord: CKRecord) async throws {
+        guard let code = stringValue(rootRecord[CoupleRootField.inviteCode]) else { return }
+        try await deleteIfExists(
+            recordID: CKRecord.ID(recordName: inviteCodeRecordName(code)),
+            database: publicDatabase
+        )
+    }
+
+    func isRevokedCoupleAccessError(_ error: CKError) -> Bool {
+        switch error.code {
+        case .unknownItem, .permissionFailure, .zoneNotFound, .userDeletedZone:
+            return true
+        default:
+            return false
         }
     }
 

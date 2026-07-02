@@ -152,7 +152,10 @@ protocol AppDataRepository: AuthProfileRepository {
         replacingCurrentCoupleId: String?
     ) async throws -> Couple
     func canReplaceWithIncomingShare(currentCoupleId: String, session: AppleSession) async throws -> Bool
-    func disconnectCouple(coupleId: String, session: AppleSession) async throws
+    func disconnectCouple(coupleId: String, session: AppleSession) async throws -> CoupleDisconnectResult
+    func deleteCoupleSpace(coupleId: String, session: AppleSession) async throws -> LongdyUser
+    func clearUserCoupleRoot(session: AppleSession) async throws
+    func resetUserProfileAfterCoupleDeletion(session: AppleSession) async throws -> LongdyUser
     func repairUserCoupleReference(session: AppleSession, coupleId: String) async throws
     func ensureChangeSubscriptions() async throws
     func fetchCoupleData(coupleId: String) async throws -> (

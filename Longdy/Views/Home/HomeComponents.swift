@@ -171,6 +171,7 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppViewModel
     @State private var showingCopyAlert = false
     @State private var showingDisconnectAlert = false
+    @State private var showingDeleteCoupleSpaceAlert = false
     @State private var showingWeatherRefreshAlert = false
     @State private var weatherRefreshSucceeded = false
     @State private var draftName = ""
@@ -292,11 +293,23 @@ struct SettingsView: View {
                             showingDisconnectAlert = true
                         } label: {
                             Label(
-                                appState.isDisconnectingCouple ? "연결 끊는 중" : "연결 끊기",
+                                disconnectButtonTitle,
                                 systemImage: "heart.slash"
                             )
                         }
-                        .disabled(appState.isDisconnectingCouple)
+                        .disabled(appState.isDisconnectingCouple || appState.isDeletingCoupleSpace)
+
+                        if appState.isCurrentUserCoupleOwner {
+                            Button(role: .destructive) {
+                                showingDeleteCoupleSpaceAlert = true
+                            } label: {
+                                Label(
+                                    appState.isDeletingCoupleSpace ? "공간 삭제 중" : "커플 공간 삭제",
+                                    systemImage: "trash"
+                                )
+                            }
+                            .disabled(appState.isDisconnectingCouple || appState.isDeletingCoupleSpace)
+                        }
                     }
                 }
 
@@ -314,20 +327,28 @@ struct SettingsView: View {
                 Button("닫기") {
                     dismiss()
                 }
+                .disabled(appState.isDisconnectingCouple || appState.isDeletingCoupleSpace)
             }
             .alert("복사 완료", isPresented: $showingCopyAlert) {
                 Button("확인", role: .cancel) {}
             } message: {
                 Text("초대 코드가 클립보드에 복사됐어요.")
             }
-            .alert("커플 연결을 끊을까요?", isPresented: $showingDisconnectAlert) {
+            .alert(disconnectAlertTitle, isPresented: $showingDisconnectAlert) {
                 Button("취소", role: .cancel) {}
-                Button("연결 끊기", role: .destructive) {
-                    dismiss()
+                Button(appState.isCurrentUserCoupleOwner ? "연결 해제" : "나가기", role: .destructive) {
                     appState.disconnectCouple()
                 }
             } message: {
-                Text("이 기기에서 커플 공간 연결이 해제돼요. 다시 연결하려면 초대 코드를 새로 만들어야 해요.")
+                Text(disconnectAlertMessage)
+            }
+            .alert("커플 공간을 삭제할까요?", isPresented: $showingDeleteCoupleSpaceAlert) {
+                Button("취소", role: .cancel) {}
+                Button("영구 삭제", role: .destructive) {
+                    appState.deleteCoupleSpace()
+                }
+            } message: {
+                Text("기분 공유, 일정, 챙김, 오늘의 한 장과 연결 정보가 iCloud에서 삭제돼요. 상대도 더 이상 접근할 수 없으며 복구할 수 없어요.")
             }
             .alert("프로필 사진을 제거할까요?", isPresented: $showingProfilePhotoRemovalAlert) {
                 Button("취소", role: .cancel) {}
@@ -352,6 +373,9 @@ struct SettingsView: View {
                 loadAndSaveProfilePhoto(item)
             }
         }
+        .interactiveDismissDisabled(
+            appState.isDisconnectingCouple || appState.isDeletingCoupleSpace
+        )
     }
 
     private var profilePhotoControls: some View {
@@ -426,6 +450,22 @@ struct SettingsView: View {
         .alignmentGuide(.listRowSeparatorTrailing) { dimensions in
             dimensions.width
         }
+    }
+
+    private var disconnectButtonTitle: String {
+        if appState.isDisconnectingCouple { return "처리 중" }
+        return appState.isCurrentUserCoupleOwner ? "상대 연결 해제" : "커플 공간 나가기"
+    }
+
+    private var disconnectAlertTitle: String {
+        appState.isCurrentUserCoupleOwner ? "상대 연결을 해제할까요?" : "커플 공간에서 나갈까요?"
+    }
+
+    private var disconnectAlertMessage: String {
+        if appState.isCurrentUserCoupleOwner {
+            return "상대의 공유 접근 권한과 프로필 정보를 제거하고 기존 초대 코드를 폐기해요. 커플 공간 데이터는 유지돼요."
+        }
+        return "내 공유 접근 권한과 연결 정보가 제거돼요. 커플 공간 데이터는 생성자에게 남아요."
     }
 
     private func loadAndSaveProfilePhoto(_ item: PhotosPickerItem?) {
