@@ -142,7 +142,9 @@ struct CoupleSetupView: View {
     @EnvironmentObject private var appState: AppViewModel
     @StateObject private var viewModel = CoupleSetupViewModel()
     @State private var showingRegenerateConfirmation = false
+    @State private var showingDeleteSpaceConfirmation = false
     @State private var showingCopyAlert = false
+    @State private var showingConnectionHelp = false
 
     var body: some View {
         ZStack {
@@ -157,7 +159,9 @@ struct CoupleSetupView: View {
                     divider
                     joinSection
 
-                    Button("연결에 도움이 필요하신가요?") {}
+                    Button("연결에 도움이 필요하신가요?") {
+                        showingConnectionHelp = true
+                    }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(CoupleSetupPalette.muted)
                         .underline(color: CoupleSetupPalette.line)
@@ -182,6 +186,11 @@ struct CoupleSetupView: View {
         } message: {
             Text("초대 코드가 클립보드에 복사됐어요.")
         }
+        .sheet(isPresented: $showingConnectionHelp) {
+            CoupleConnectionHelpView()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .alert("공유 초대를 재생성할까요?", isPresented: $showingRegenerateConfirmation) {
             Button("취소", role: .cancel) {}
             Button("재생성", role: .destructive) {
@@ -198,6 +207,14 @@ struct CoupleSetupView: View {
             }
         } message: {
             Text("기존 초대 코드는 더 이상 사용할 수 없고 새 코드가 만들어져요.")
+        }
+        .alert("커플 공간을 삭제할까요?", isPresented: $showingDeleteSpaceConfirmation) {
+            Button("취소", role: .cancel) {}
+            Button("영구 삭제", role: .destructive) {
+                appState.deleteCoupleSpace()
+            }
+        } message: {
+            Text("기분 공유, 일정, 챙김, 오늘의 한 장과 연결 정보가 iCloud에서 삭제되며 복구할 수 없어요.")
         }
         .task(id: appState.currentProfile?.partnerCoupleId) {
             await pollPendingCoupleConnection()
@@ -333,6 +350,19 @@ struct CoupleSetupView: View {
                     }
                     .buttonStyle(CoupleSecondaryButtonStyle())
                     .disabled(viewModel.isCreatingShare)
+
+                    if appState.isCurrentUserCoupleOwner {
+                        Button(role: .destructive) {
+                            showingDeleteSpaceConfirmation = true
+                        } label: {
+                            Label(
+                                appState.isDeletingCoupleSpace ? "공간 삭제 중" : "커플 공간 삭제",
+                                systemImage: "trash"
+                            )
+                        }
+                        .buttonStyle(CoupleSecondaryButtonStyle())
+                        .disabled(viewModel.isCreatingShare || appState.isDeletingCoupleSpace)
+                    }
                 }
             } else {
                 Button {
