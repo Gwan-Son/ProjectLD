@@ -276,6 +276,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Longdy/Supporting/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Our Bridge";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "내 도시와 현재 날씨를 표시하려면 위치 접근이 필요해요.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "오늘의 한 장을 선택하고 공유하려면 사진 접근이 필요해요.";
 				INFOPLIST_KEY_OPENWEATHER_API_KEY = "$(OPENWEATHER_API_KEY)";
@@ -319,6 +320,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Longdy/Supporting/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Our Bridge";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "내 도시와 현재 날씨를 표시하려면 위치 접근이 필요해요.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "오늘의 한 장을 선택하고 공유하려면 사진 접근이 필요해요.";
 				INFOPLIST_KEY_OPENWEATHER_API_KEY = "$(OPENWEATHER_API_KEY)";

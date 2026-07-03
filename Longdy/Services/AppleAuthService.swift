@@ -17,15 +17,31 @@ final class AppleAuthService: NSObject {
     private var continuation: CheckedContinuation<AppleSignInResult, Error>?
     private var currentNonce: String?
     private var currentController: ASAuthorizationController?
+    private var presentationWindow: ASPresentationAnchor?
 
     private override init() {}
 
     func signIn() async throws -> AppleSignInResult {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation?.resume(throwing: LongdyError.invalidInput("Apple 로그인을 다시 시도해 주세요."))
+            clearState()
             self.continuation = continuation
 
-            let nonce = Self.randomNonceString()
+            guard let presentationWindow = Self.activePresentationAnchor() else {
+                continuation.resume(throwing: LongdyError.invalidInput("Apple 로그인 화면을 표시할 수 없어요. 잠시 후 다시 시도해 주세요."))
+                clearState()
+                return
+            }
+            self.presentationWindow = presentationWindow
+
+            let nonce: String
+            do {
+                nonce = try Self.randomNonceString()
+            } catch {
+                continuation.resume(throwing: error)
+                clearState()
+                return
+            }
             currentNonce = nonce
 
             let request = ASAuthorizationAppleIDProvider().createRequest()
@@ -46,8 +62,10 @@ final class AppleAuthService: NSObject {
         return hashedData.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    private static func randomNonceString(length: Int = 32) -> String {
-        precondition(length > 0)
+    private static func randomNonceString(length: Int = 32) throws -> String {
+        guard length > 0 else {
+            throw LongdyError.invalidInput("Apple 로그인 보안 정보를 생성하지 못했어요.")
+        }
         let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
         var result = ""
         var remainingLength = length
@@ -56,7 +74,7 @@ final class AppleAuthService: NSObject {
             var random: UInt8 = 0
             let status = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
             guard status == errSecSuccess else {
-                fatalError("Unable to generate nonce.")
+                throw LongdyError.invalidInput("Apple 로그인 보안 정보를 생성하지 못했어요. 다시 시도해 주세요.")
             }
 
             if random < charset.count {
@@ -66,6 +84,19 @@ final class AppleAuthService: NSObject {
         }
 
         return result
+    }
+
+    private static func activePresentationAnchor() -> ASPresentationAnchor? {
+        let windowScenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .sorted { lhs, rhs in
+                lhs.activationState == .foregroundActive && rhs.activationState != .foregroundActive
+            }
+
+        return windowScenes
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+            ?? windowScenes.flatMap(\.windows).first(where: { !$0.isHidden })
     }
 }
 
@@ -106,6 +137,7 @@ extension AppleAuthService: ASAuthorizationControllerDelegate {
         continuation = nil
         currentNonce = nil
         currentController = nil
+        presentationWindow = nil
     }
 
     private static func userFacingError(from error: Error) -> Error {
@@ -147,15 +179,8 @@ extension AppleAuthService: ASAuthorizationControllerDelegate {
 
 extension AppleAuthService: ASAuthorizationControllerPresentationContextProviding {
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        let windowScenes = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-
-        if let keyWindow = windowScenes.flatMap(\.windows).first(where: \.isKeyWindow) {
-            return keyWindow
-        }
-        if let windowScene = windowScenes.first {
-            return ASPresentationAnchor(windowScene: windowScene)
-        }
-        fatalError("No active window scene for Apple Sign In.")
+        presentationWindow
+            ?? Self.activePresentationAnchor()
+            ?? ASPresentationAnchor(frame: .zero)
     }
 }

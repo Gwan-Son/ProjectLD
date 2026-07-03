@@ -314,6 +314,15 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("약관 및 개인정보") {
+                    Link(destination: LegalDocumentLinks.privacyPolicy) {
+                        legalDocumentLabel("개인정보처리방침", systemImage: "hand.raised")
+                    }
+                    Link(destination: LegalDocumentLinks.termsOfService) {
+                        legalDocumentLabel("이용약관", systemImage: "doc.text")
+                    }
+                }
+
                 Section("계정") {
                     Button {
                         dismiss()
@@ -506,6 +515,16 @@ struct SettingsView: View {
         appState.isDisconnectingCouple
             || appState.isDeletingCoupleSpace
             || appState.isDeletingAccount
+    }
+
+    private func legalDocumentLabel(_ title: String, systemImage: String) -> some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+            Spacer()
+            Image(systemName: "arrow.up.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(LongdyColors.muted)
+        }
     }
 
     private var deleteAccountAlertMessage: String {

@@ -33,6 +33,9 @@ struct AuthView: View {
 
                     loginPanel
 
+                    authLegalLinks
+                        .padding(.top, 18)
+
                     loginImage
                         .padding(.top, 64)
                 }
@@ -44,6 +47,17 @@ struct AuthView: View {
             .background(LoginPalette.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
         }
+    }
+
+    private var authLegalLinks: some View {
+        HStack(spacing: 12) {
+            Link("개인정보처리방침", destination: LegalDocumentLinks.privacyPolicy)
+            Text("·")
+                .accessibilityHidden(true)
+            Link("이용약관", destination: LegalDocumentLinks.termsOfService)
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(LoginPalette.muted)
     }
 
     private var loginPanel: some View {
@@ -100,16 +114,12 @@ struct AuthView: View {
 
     private var loginImage: some View {
         ZStack(alignment: .bottom) {
-            AsyncImage(url: URL(string: "https://lh3.googleusercontent.com/aida-public/AB6AXuAUO5_w407eOpAYLvfG8ZTCOvr737nMOAUSckK7cnNu_55uwvXQ4ii1yTGzEX_ufLluguTt6sfn_MzhvHWbdB5_tLicYFcKGLuysPnOOYLXsTk571mMY_5zUlevCAXS-IHLljt43JaeVzbOdqsX94Ktp84X-gkgl4W3N23DtbBF9mtPBM_RNErtxu1dZAK9Ux0srbY6ZKqnVWVTMjkHOLt2WaSmH09HcAXuUATulm7bmJXcyxq_xdn4CDMBhJ9_KeFFENWM7YjpGSY")) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    LoginPalette.surfaceContainer
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(16 / 9, contentMode: .fit)
-            .clipped()
+            Image("onboarding")
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipped()
 
             LinearGradient(colors: [.clear, LoginPalette.background.opacity(0.92)], startPoint: .top, endPoint: .bottom)
 
@@ -167,6 +177,15 @@ struct CoupleSetupView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(CoupleSetupPalette.muted)
                         .underline(color: CoupleSetupPalette.line)
+
+                        HStack(spacing: 12) {
+                            Link("개인정보처리방침", destination: LegalDocumentLinks.privacyPolicy)
+                            Text("·")
+                                .accessibilityHidden(true)
+                            Link("이용약관", destination: LegalDocumentLinks.termsOfService)
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(CoupleSetupPalette.muted)
 
                         Button(role: .destructive) {
                             showingDeleteAccountConfirmation = true
