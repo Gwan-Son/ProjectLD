@@ -70,18 +70,21 @@
       "size" : "60x60"
     },
     {
+      "filename" : "Icon-App-64x64@2x.png",
       "idiom" : "universal",
       "platform" : "ios",
       "scale" : "2x",
       "size" : "64x64"
     },
     {
+      "filename" : "Icon-App-64x64@3x.png",
       "idiom" : "universal",
       "platform" : "ios",
       "scale" : "3x",
       "size" : "64x64"
     },
     {
+      "filename" : "Icon-App-68x68@2x.png",
       "idiom" : "universal",
       "platform" : "ios",
       "scale" : "2x",
