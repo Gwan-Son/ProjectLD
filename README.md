@@ -33,9 +33,9 @@ Our Bridge는 떨어져 있는 두 사람이 서로의 하루, 기분, 일정, �
 # 👀 미리 보기
 
 <div>
-  <img src="./AppStoreScreenshots/01-our-bridge.png" width="32%">
-  <img src="./AppStoreScreenshots/03-our-bridge.png" width="32%">
-  <img src="./AppStoreScreenshots/06-our-bridge.png" width="32%">
+  <img src="https://github.com/user-attachments/assets/c19f2080-8cd6-4b12-a9e4-bc7814100754" width="32%">
+  <img src="https://github.com/user-attachments/assets/c05c722d-3cdd-4c7d-8de7-66f6d960d8a7" width="32%">
+  <img src="https://github.com/user-attachments/assets/afd8b309-d1bd-4c6e-8bbe-b2865509ec77" width="32%">
 </div>
 
 # ⚙️ 주요 기능
