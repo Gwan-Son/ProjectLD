@@ -5,6 +5,12 @@
 Our Bridge는 떨어져 있는 두 사람이 서로의 하루, 기분, 일정, 사진을 부담 없이 확인할 수 있도록 만든 iOS 앱입니다.
 메신저를 대체하기보다 서로의 생활 리듬과 마음을 자연스럽게 느끼는 것에 집중합니다.
 
+<a href="https://apps.apple.com/kr/app/our-birdge-%EA%B1%B0%EB%A6%AC%EC%9D%98-%EC%9E%A5%EB%B2%BD%EC%9D%84-%EB%84%98%EC%96%B4-%EB%8B%A4%EC%8B%9C-%EC%9A%B0%EB%A6%AC%EB%A1%9C/id6787828706">
+ <img src="https://github.com/user-attachments/assets/4a8856c1-efb7-4b7b-82cc-1116b50c5678" width="250px">
+</div>
+
+
+
 ## 목차
 - [🚀 개발 기간](#-개발-기간)
 - [💻 개발 환경](#-개발-환경)
