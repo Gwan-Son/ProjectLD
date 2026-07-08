@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var showingBridgeProgress = false
     @State private var isSavingMood = false
     @State private var selectedWeatherUser: LongdyUser?
+    @State private var selectedMemory: MemoryNote?
     @State private var selectedMeetingPage = 1
 
     var body: some View {
@@ -75,6 +76,13 @@ struct HomeView: View {
                 appState.refreshLocationAndWeather()
             }
             .presentationBackground(.clear)
+        }
+        .sheet(item: $selectedMemory) { memory in
+            PhotoDetailView(
+                memory: memory,
+                ownerName: ownerName(for: memory),
+                coupleId: appState.coupleId
+            )
         }
     }
 
@@ -450,32 +458,43 @@ struct HomeView: View {
                 .accessibilityLabel("오늘의 한 장 더보기")
             }
 
-            ZStack(alignment: .bottomLeading) {
-                memoryArtwork
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 260)
-                    .clipped()
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.58)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(memoryCaption)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.82))
-                    Text(memoryText)
-                        .font(.system(size: 21, weight: .medium, design: .serif))
-                        .foregroundStyle(.white)
-                        .lineLimit(3)
+            Button {
+                if let memory = appState.recentMemory {
+                    selectedMemory = memory
+                } else {
+                    appState.selectedMainTab = .todayPhoto
                 }
-                .padding(22)
+            } label: {
+                ZStack(alignment: .bottomLeading) {
+                    memoryArtwork
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 260)
+                        .clipped()
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.58)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(memoryCaption)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.82))
+                        Text(memoryText)
+                            .font(.system(size: 21, weight: .medium, design: .serif))
+                            .foregroundStyle(.white)
+                            .lineLimit(3)
+                    }
+                    .padding(22)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 260)
+                .contentShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 260)
+            .buttonStyle(.plain)
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
             .shadow(color: HomePalette.primary.opacity(0.13), radius: 14, y: 7)
+            .accessibilityLabel(appState.recentMemory == nil ? "오늘의 한 장으로 이동" : "최근 사진 크게 보기")
         }
     }
 
@@ -579,6 +598,10 @@ struct HomeView: View {
     private var memoryText: String {
         guard let memory = appState.recentMemory else { return "\"오늘 서로에게 보여주고 싶은 장면을 남겨보세요.\"" }
         return memory.text.isEmpty ? "\"오늘의 장면이 조용히 도착했어요.\"" : "\"\(memory.text)\""
+    }
+
+    private func ownerName(for memory: MemoryNote) -> String {
+        memory.userId == appState.userId ? "나" : appState.partner?.friendlyName ?? "상대"
     }
 
     private func timeText(for user: LongdyUser?, date: Date) -> String {
