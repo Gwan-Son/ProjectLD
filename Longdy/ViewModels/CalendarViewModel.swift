@@ -50,13 +50,24 @@ final class CalendarViewModel: ObservableObject {
 
     func eventsForSelectedDate(from events: [CoupleEvent]) -> [CoupleEvent] {
         events
-            .filter { Calendar.current.isDate($0.startAt, inSameDayAs: selectedDate) }
+            .filter { occurs($0, on: selectedDate) }
             .sorted { $0.startAt < $1.startAt }
     }
 
     func eventTypes(on date: Date, events: [CoupleEvent]) -> [EventType] {
-        Array(Set(events.filter { Calendar.current.isDate($0.startAt, inSameDayAs: date) }.map(\.type)))
+        Array(Set(events.filter { occurs($0, on: date) }.map(\.type)))
             .sorted { $0.rawValue < $1.rawValue }
+    }
+
+    private func occurs(_ event: CoupleEvent, on date: Date) -> Bool {
+        let calendar = Calendar.current
+        guard let day = calendar.dateInterval(of: .day, for: date) else {
+            return calendar.isDate(event.startAt, inSameDayAs: date)
+        }
+        if event.startAt == event.endAt {
+            return calendar.isDate(event.startAt, inSameDayAs: date)
+        }
+        return event.startAt < day.end && event.endAt > day.start
     }
 
     func ownerName(for event: CoupleEvent, currentUserId: String?, members: [LongdyUser]) -> String {
