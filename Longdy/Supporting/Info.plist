@@ -26,6 +26,8 @@
 	<string>내 도시와 현재 날씨를 표시하기 위해 현재 위치를 사용해요.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>오늘의 한 장으로 남길 사진을 선택하기 위해 사진 보관함을 사용해요.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>오늘의 한 장 사진을 사진 앱에 저장하기 위해 사용해요.</string>
 	<key>OPENWEATHER_API_KEY</key>
 	<string>$(OPENWEATHER_API_KEY)</string>
 	<key>UIApplicationSceneManifest</key>

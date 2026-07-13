@@ -1,4 +1,5 @@
 import PhotosUI
+import Photos
 import SwiftUI
 import UIKit
 
@@ -227,6 +228,8 @@ struct PhotoDetailView: View {
     let ownerName: String
     let coupleId: String?
     @StateObject private var viewModel: MemoryDetailViewModel
+    @State private var saveAlertMessage = ""
+    @State private var showingSaveAlert = false
 
     init(memory: MemoryNote, ownerName: String, coupleId: String?) {
         self.ownerName = ownerName
@@ -268,9 +271,27 @@ struct PhotoDetailView: View {
             .navigationTitle("오늘의 한 장")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        saveToPhotoLibrary()
+                    } label: {
+                        if viewModel.isSavingToLibrary {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Label("저장", systemImage: "square.and.arrow.down")
+                        }
+                    }
+                    .disabled(viewModel.isSavingToLibrary)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("닫기") { dismiss() }
                 }
+            }
+            .alert("사진 저장", isPresented: $showingSaveAlert) {
+                Button("확인", role: .cancel) {}
+            } message: {
+                Text(saveAlertMessage)
             }
             .background(PhotoPalette.background.ignoresSafeArea())
             .task {
@@ -306,6 +327,14 @@ struct PhotoDetailView: View {
             ContentUnavailableView("사진을 불러오지 못했어요", systemImage: "photo", description: Text(error))
         } else {
             Rectangle().fill(PhotoPalette.line.opacity(0.35))
+        }
+    }
+
+    private func saveToPhotoLibrary() {
+        Task {
+            let saved = await viewModel.saveToPhotoLibrary(coupleId: coupleId)
+            saveAlertMessage = saved ? "사진 앱에 저장했어요." : viewModel.errorMessage ?? "사진을 저장하지 못했어요."
+            showingSaveAlert = true
         }
     }
 }
@@ -429,4 +458,3 @@ extension View {
             .clipShape(Capsule())
     }
 }
-

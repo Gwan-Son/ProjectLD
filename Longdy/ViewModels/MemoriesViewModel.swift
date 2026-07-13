@@ -1,6 +1,7 @@
 import CloudKit
 import Combine
 import Foundation
+import Photos
 import UIKit
 
 @MainActor
@@ -261,6 +262,7 @@ final class MemoriesViewModel: ObservableObject {
 final class MemoryDetailViewModel: ObservableObject {
     @Published private(set) var memory: MemoryNote
     @Published private(set) var isLoading = false
+    @Published private(set) var isSavingToLibrary = false
     @Published private(set) var errorMessage: String?
 
     private let repository: any MemoryRepository
@@ -283,6 +285,63 @@ final class MemoryDetailViewModel: ObservableObject {
             memory = try await repository.fetchMemoryDetail(coupleId: coupleId, memoryId: memory.id)
         } catch {
             errorMessage = error.longdyUserMessage
+        }
+    }
+
+    func saveToPhotoLibrary(coupleId: String?) async -> Bool {
+        if memory.storageURL == nil {
+            await loadOriginal(coupleId: coupleId)
+        }
+
+        guard let urlString = memory.storageURL, let url = URL(string: urlString) else {
+            errorMessage = "저장할 사진을 아직 불러오지 못했어요."
+            return false
+        }
+
+        isSavingToLibrary = true
+        defer { isSavingToLibrary = false }
+
+        do {
+            errorMessage = nil
+            let image = try await image(from: url)
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else {
+                throw LongdyError.invalidInput("사진 저장 권한이 필요해요. 설정에서 사진 추가 권한을 허용해 주세요.")
+            }
+            try await save(image)
+            return true
+        } catch {
+            errorMessage = error.longdyUserMessage
+            return false
+        }
+    }
+
+    private func image(from url: URL) async throws -> UIImage {
+        let data: Data
+        if url.isFileURL {
+            data = try Data(contentsOf: url)
+        } else {
+            data = try await URLSession.shared.data(from: url).0
+        }
+        guard let image = UIImage(data: data) else {
+            throw LongdyError.invalidInput("사진 파일을 읽지 못했어요.")
+        }
+        return image
+    }
+
+    private func save(_ image: UIImage) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            } completionHandler: { succeeded, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if succeeded {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: LongdyError.invalidInput("사진을 저장하지 못했어요."))
+                }
+            }
         }
     }
 }
