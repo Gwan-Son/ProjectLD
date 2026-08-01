@@ -60,9 +60,9 @@ actor PartnerNotificationService {
 final class CloudKitChangeCoordinator {
     static let shared = CloudKitChangeCoordinator()
 
-    var handler: (() async -> Bool)?
+    var handler: ((Bool) async -> Bool)?
 
-    func handleChange() async -> Bool {
-        await handler?() ?? false
+    func handleChange(suppressLocalNotification: Bool = false) async -> Bool {
+        await handler?(suppressLocalNotification) ?? false
     }
 }

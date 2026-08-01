@@ -45,9 +45,9 @@ final class AppViewModel: ObservableObject {
 
     init(cloudKitService: any AppDataRepository = DependencyContainer.live.appDataRepository) {
         self.cloudKitService = cloudKitService
-        CloudKitChangeCoordinator.shared.handler = { [weak self] in
+        CloudKitChangeCoordinator.shared.handler = { [weak self] suppressLocalNotification in
             guard let self else { return false }
-            return await self.processRemoteCloudKitChange()
+            return await self.processRemoteCloudKitChange(suppressLocalNotification: suppressLocalNotification)
         }
         CoupleDataRefreshCoordinator.shared.handler = { [weak self] in
             self?.refreshCoupleData(force: true)

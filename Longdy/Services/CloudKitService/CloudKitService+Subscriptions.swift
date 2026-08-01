@@ -5,16 +5,19 @@ extension CloudKitService {
     func ensureChangeSubscriptions() async throws {
         async let privateSubscription: Void = ensureDatabaseSubscription(
             id: "longdy.private.database.changes",
-            database: privateDatabase
+            database: privateDatabase,
+            alertBody: nil
         )
         async let sharedSubscription: Void = ensureDatabaseSubscription(
-            id: "longdy.shared.database.changes",
-            database: sharedDatabase
+            id: "longdy.shared.database.changes.visible.v2",
+            database: sharedDatabase,
+            alertBody: "상대의 새로운 소식이 도착했어요."
         )
         async let privateMemorySubscription: Void = ensureRecordTypeSubscription(
             id: "longdy.private.memory.changes",
             recordType: RecordType.memoryNote,
-            database: privateDatabase
+            database: privateDatabase,
+            alertBody: nil
         )
         _ = try await (
             privateSubscription,
@@ -23,14 +26,13 @@ extension CloudKitService {
         )
     }
 
-    func ensureDatabaseSubscription(id: String, database: CKDatabase) async throws {
+    func ensureDatabaseSubscription(id: String, database: CKDatabase, alertBody: String?) async throws {
         if (try? await fetchSubscription(id: id, database: database)) != nil {
             return
         }
 
         let subscription = CKDatabaseSubscription(subscriptionID: id)
-        let notificationInfo = CKSubscription.NotificationInfo()
-        notificationInfo.shouldSendContentAvailable = true
+        let notificationInfo = notificationInfo(alertBody: alertBody)
         subscription.notificationInfo = notificationInfo
         let _: CKSubscription? = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKSubscription?, Error>) in
             database.save(subscription) { subscription, error in
@@ -43,7 +45,7 @@ extension CloudKitService {
         }
     }
 
-    func ensureRecordTypeSubscription(id: String, recordType: String, database: CKDatabase) async throws {
+    func ensureRecordTypeSubscription(id: String, recordType: String, database: CKDatabase, alertBody: String?) async throws {
         if (try? await fetchSubscription(id: id, database: database)) != nil {
             return
         }
@@ -54,8 +56,7 @@ extension CloudKitService {
             subscriptionID: id,
             options: [.firesOnRecordCreation, .firesOnRecordUpdate, .firesOnRecordDeletion]
         )
-        let notificationInfo = CKSubscription.NotificationInfo()
-        notificationInfo.shouldSendContentAvailable = true
+        let notificationInfo = notificationInfo(alertBody: alertBody)
         subscription.notificationInfo = notificationInfo
         let _: CKSubscription? = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKSubscription?, Error>) in
             database.save(subscription) { subscription, error in
@@ -87,5 +88,16 @@ extension CloudKitService {
         return message.contains("Did not find record type")
             || message.contains("record type")
             && message.contains("not found")
+    }
+
+    private func notificationInfo(alertBody: String?) -> CKSubscription.NotificationInfo {
+        let notificationInfo = CKSubscription.NotificationInfo()
+        notificationInfo.shouldSendContentAvailable = true
+        if let alertBody {
+            notificationInfo.title = "Our Bridge"
+            notificationInfo.alertBody = alertBody
+            notificationInfo.soundName = "default"
+        }
+        return notificationInfo
     }
 }

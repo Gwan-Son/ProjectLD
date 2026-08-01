@@ -25,13 +25,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        let notification = CKNotification(fromRemoteNotificationDictionary: userInfo)
-        guard notification?.subscriptionID?.hasPrefix("longdy.") == true else {
+        let subscriptionID = CKNotification(fromRemoteNotificationDictionary: userInfo)?.subscriptionID
+        guard subscriptionID?.hasPrefix("longdy.") == true else {
             completionHandler(.noData)
             return
         }
         Task { @MainActor in
-            let changed = await CloudKitChangeCoordinator.shared.handleChange()
+            let changed = await CloudKitChangeCoordinator.shared.handleChange(
+                suppressLocalNotification: subscriptionID?.contains(".visible.") == true
+            )
             completionHandler(changed ? .newData : .noData)
         }
     }

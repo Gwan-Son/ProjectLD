@@ -9,7 +9,7 @@ extension AppViewModel {
         }
     }
 
-    func processRemoteCloudKitChange() async -> Bool {
+    func processRemoteCloudKitChange(suppressLocalNotification: Bool = false) async -> Bool {
         guard let coupleId else { return false }
         let shouldNotify = hasLoadedCoupleData
         let previousCheckInIDs = Set(checkIns.map(\.id))
@@ -46,7 +46,7 @@ extension AppViewModel {
             }
         }
 
-        guard didLoad, shouldNotify, let partnerId = partner?.id else { return didLoad }
+        guard didLoad, shouldNotify, !suppressLocalNotification, let partnerId = partner?.id else { return didLoad }
 
         if checkIns.contains(where: { $0.userId == partnerId && !previousCheckInIDs.contains($0.id) }) {
             await partnerNotificationService.send(.mood)
