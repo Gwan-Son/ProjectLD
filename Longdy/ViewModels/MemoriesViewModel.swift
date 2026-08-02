@@ -26,7 +26,7 @@ final class MemoriesViewModel: ObservableObject {
     }
 
     func mergeRecentMemories(_ values: [MemoryNote]) {
-        memories = deduplicated(values + memories)
+        memories = deduplicatedKeepingLocalWork(values + memories)
     }
 
     func loadFirstPage(coupleId: String?) async {
@@ -38,7 +38,7 @@ final class MemoriesViewModel: ObservableObject {
             errorMessage = nil
             let page = try await repository.fetchMemoryPage(coupleId: coupleId)
             let unsynced = memories.filter { $0.effectiveSyncState != .synced }
-            memories = deduplicated(unsynced + page.memories)
+            memories = deduplicatedKeepingLocalWork(unsynced + page.memories)
             nextCursor = page.cursor
             hasMorePages = page.cursor != nil
         } catch {
@@ -248,6 +248,23 @@ final class MemoriesViewModel: ObservableObject {
         return values
             .sorted { $0.createdAt > $1.createdAt }
             .filter { seen.insert($0.id).inserted }
+    }
+
+    private func deduplicatedKeepingLocalWork(_ values: [MemoryNote]) -> [MemoryNote] {
+        var seenIDs: Set<String> = []
+        var seenUserDates: Set<String> = []
+        return values
+            .sorted {
+                if $0.effectiveSyncState != $1.effectiveSyncState {
+                    return $0.effectiveSyncState != .synced
+                }
+                return $0.createdAt > $1.createdAt
+            }
+            .filter { memory in
+                let userDate = "\(memory.userId)-\(memory.dateKey)"
+                return seenIDs.insert(memory.id).inserted && seenUserDates.insert(userDate).inserted
+            }
+            .sorted { $0.createdAt > $1.createdAt }
     }
 
     private func postDelayedRefresh() {

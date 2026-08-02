@@ -378,7 +378,13 @@ extension AppViewModel {
             $0.effectiveSyncState != .synced || protectedIDs.contains($0.id)
         }
         let localIDs = Set(localMemories.map(\.id))
+        let localUserDates = Set(localMemories.map { "\($0.userId)-\($0.dateKey)" })
         return (localMemories + remoteMemories.filter { !localIDs.contains($0.id) })
+            .filter { memory in
+                memory.effectiveSyncState != .synced
+                    || protectedIDs.contains(memory.id)
+                    || !localUserDates.contains("\(memory.userId)-\(memory.dateKey)")
+            }
             .sorted { $0.createdAt > $1.createdAt }
     }
 

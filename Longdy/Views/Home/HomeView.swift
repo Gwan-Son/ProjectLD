@@ -443,7 +443,7 @@ struct HomeView: View {
                     .foregroundStyle(HomePalette.ink)
                 Spacer()
                 Button {
-                    appState.selectedMainTab = .todayPhoto
+                    showTodayPhotoTab()
                 } label: {
                     HStack(spacing: 5) {
                         Text("더보기")
@@ -452,45 +452,39 @@ struct HomeView: View {
                             .font(.caption.weight(.semibold))
                     }
                     .foregroundStyle(HomePalette.primary)
-                    .contentShape(Rectangle())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .accessibilityLabel("오늘의 한 장 더보기")
             }
 
-            Button {
-                if let memory = appState.recentMemory {
-                    selectedMemory = memory
-                } else {
-                    appState.selectedMainTab = .todayPhoto
+            ZStack(alignment: .bottomLeading) {
+                memoryArtwork
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 260)
+                    .clipped()
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.58)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(memoryCaption)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.82))
+                    Text(memoryText)
+                        .font(.system(size: 21, weight: .medium, design: .serif))
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
                 }
-            } label: {
-                ZStack(alignment: .bottomLeading) {
-                    memoryArtwork
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 260)
-                        .clipped()
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.58)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(memoryCaption)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.82))
-                        Text(memoryText)
-                            .font(.system(size: 21, weight: .medium, design: .serif))
-                            .foregroundStyle(.white)
-                            .lineLimit(3)
-                    }
-                    .padding(22)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 260)
-                .contentShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+                .padding(22)
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .frame(height: 260)
+            .contentShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+            .onTapGesture(perform: openRecentMemoryOrPhotos)
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
             .shadow(color: HomePalette.primary.opacity(0.13), radius: 14, y: 7)
@@ -598,6 +592,18 @@ struct HomeView: View {
     private var memoryText: String {
         guard let memory = appState.recentMemory else { return "\"오늘 서로에게 보여주고 싶은 장면을 남겨보세요.\"" }
         return memory.text.isEmpty ? "\"오늘의 장면이 조용히 도착했어요.\"" : "\"\(memory.text)\""
+    }
+
+    private func openRecentMemoryOrPhotos() {
+        if let memory = appState.recentMemory {
+            selectedMemory = memory
+        } else {
+            showTodayPhotoTab()
+        }
+    }
+
+    private func showTodayPhotoTab() {
+        appState.selectedMainTab = .todayPhoto
     }
 
     private func ownerName(for memory: MemoryNote) -> String {

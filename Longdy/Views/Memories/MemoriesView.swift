@@ -157,7 +157,7 @@ struct MemoriesView: View {
                         onRetry: myTodayPhoto.flatMap(photoRetryAction)
                     )
                         .onTapGesture {
-                            if let myTodayPhoto, myTodayPhoto.effectiveSyncState == .synced {
+                            if let myTodayPhoto, canOpenPhoto(myTodayPhoto) {
                                 selectedMemory = myTodayPhoto
                             }
                         }
@@ -232,6 +232,9 @@ struct MemoriesView: View {
                                 .font(.caption.weight(.semibold))
                         }
                         .foregroundStyle(PhotoPalette.muted)
+                        Text("사진은 먼저 화면에 표시되고, iCloud 저장은 뒤에서 계속 진행돼요.")
+                            .font(.caption)
+                            .foregroundStyle(PhotoPalette.muted)
                     }
                 }
             } else {
@@ -302,7 +305,7 @@ struct MemoriesView: View {
                             onRetry: memory.userId == appState.userId ? photoRetryAction(for: memory) : nil
                         )
                             .onTapGesture {
-                                if memory.effectiveSyncState == .synced {
+                                if canOpenPhoto(memory) {
                                     selectedMemory = memory
                                 }
                             }
@@ -394,6 +397,10 @@ struct MemoriesView: View {
     private func ownerName(for memory: MemoryNote) -> String {
         if memory.userId == appState.userId { return "나" }
         return appState.partner?.friendlyName ?? "상대"
+    }
+
+    private func canOpenPhoto(_ memory: MemoryNote) -> Bool {
+        memory.effectiveSyncState == .synced || memory.storageURL != nil
     }
 
     @ViewBuilder
