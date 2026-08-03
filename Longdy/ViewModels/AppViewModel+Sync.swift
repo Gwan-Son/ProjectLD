@@ -254,8 +254,8 @@ extension AppViewModel {
         }
         do {
             let data = try await cloudKitService.fetchCoupleData(coupleId: coupleId)
-            checkIns = data.checkIns
-            events = data.events
+            checkIns = mergeLocalCheckIns(with: data.checkIns)
+            events = mergeLocalEvents(with: data.events)
             careItems = mergeUnsyncedCareItems(with: data.careItems)
             memories = mergeUnsyncedMemories(with: data.memories)
             bridgeActivities = try await cloudKitService.fetchBridgeActivities(
@@ -290,8 +290,8 @@ extension AppViewModel {
         }
         do {
             let data = try await cloudKitService.fetchHomeData(coupleId: coupleId)
-            checkIns = data.checkIns
-            events = data.events
+            checkIns = mergeLocalCheckIns(with: data.checkIns)
+            events = mergeLocalEvents(with: data.events)
             careItems = mergeUnsyncedCareItems(with: data.careItems)
             bridgeActivities = try await cloudKitService.fetchBridgeActivities(
                 coupleId: coupleId,
@@ -351,6 +351,32 @@ extension AppViewModel {
             bridgeActivities: bridgeActivities.filter { !$0.id.hasPrefix("pending-") }
         )
         LocalCoupleDataCache.save(snapshot)
+    }
+
+    func mergeLocalCheckIns(with remoteCheckIns: [CheckIn]) -> [CheckIn] {
+        let now = Date()
+        let remoteIDs = Set(remoteCheckIns.map(\.id))
+        recentlyCommittedCheckInIDs = recentlyCommittedCheckInIDs.filter { id, committedAt in
+            !remoteIDs.contains(id) && now.timeIntervalSince(committedAt) < cloudKitReconciliationGrace
+        }
+        let protectedIDs = Set(recentlyCommittedCheckInIDs.keys)
+        let localCheckIns = checkIns.filter { protectedIDs.contains($0.id) && !$0.isExpired }
+        let localUserIDs = Set(localCheckIns.map(\.userId))
+        return (localCheckIns + remoteCheckIns.filter { !localUserIDs.contains($0.userId) })
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func mergeLocalEvents(with remoteEvents: [CoupleEvent]) -> [CoupleEvent] {
+        let now = Date()
+        let remoteIDs = Set(remoteEvents.map(\.id))
+        recentlyCommittedEventIDs = recentlyCommittedEventIDs.filter { id, committedAt in
+            !remoteIDs.contains(id) && now.timeIntervalSince(committedAt) < cloudKitReconciliationGrace
+        }
+        let protectedIDs = Set(recentlyCommittedEventIDs.keys)
+        let localEvents = events.filter { protectedIDs.contains($0.id) }
+        let localIDs = Set(localEvents.map(\.id))
+        return (localEvents + remoteEvents.filter { !localIDs.contains($0.id) })
+            .sorted { $0.startAt < $1.startAt }
     }
 
     func mergeUnsyncedCareItems(with remoteItems: [CareItem]) -> [CareItem] {

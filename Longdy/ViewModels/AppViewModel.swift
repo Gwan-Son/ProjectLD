@@ -39,6 +39,8 @@ final class AppViewModel: ObservableObject {
     var isRefreshingCoupleData = false
     var lastCoupleDataRefreshAt: Date?
     let minimumCoupleDataRefreshInterval: TimeInterval = 5
+    var recentlyCommittedCheckInIDs: [String: Date] = [:]
+    var recentlyCommittedEventIDs: [String: Date] = [:]
     var recentlyCommittedCareItemIDs: [String: Date] = [:]
     var recentlyCommittedMemoryIDs: [String: Date] = [:]
     let cloudKitReconciliationGrace: TimeInterval = 30
@@ -371,14 +373,26 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func applySavedCheckIn(_ checkIn: CheckIn) {
-        checkIns.removeAll { $0.id == checkIn.id }
+    func applySavedCheckIn(_ checkIn: CheckIn, protectFromRemote: Bool = false) {
+        if protectFromRemote {
+            recentlyCommittedCheckInIDs[checkIn.id] = Date()
+        }
+        checkIns.removeAll { $0.id == checkIn.id || ($0.userId == checkIn.userId && !$0.isExpired) }
         checkIns.insert(checkIn, at: 0)
         checkIns.sort { $0.createdAt > $1.createdAt }
         saveCurrentCoupleCache()
     }
 
-    func applySavedEvent(_ event: CoupleEvent) {
+    func removeCheckIn(_ checkIn: CheckIn) {
+        recentlyCommittedCheckInIDs.removeValue(forKey: checkIn.id)
+        checkIns.removeAll { $0.id == checkIn.id }
+        saveCurrentCoupleCache()
+    }
+
+    func applySavedEvent(_ event: CoupleEvent, protectFromRemote: Bool = false) {
+        if protectFromRemote {
+            recentlyCommittedEventIDs[event.id] = Date()
+        }
         events.removeAll { $0.id == event.id }
         events.append(event)
         events.sort { $0.startAt < $1.startAt }
@@ -392,6 +406,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func removeEvent(_ event: CoupleEvent) {
+        recentlyCommittedEventIDs.removeValue(forKey: event.id)
         events.removeAll { $0.id == event.id }
         saveCurrentCoupleCache()
     }

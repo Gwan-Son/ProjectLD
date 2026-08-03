@@ -36,6 +36,42 @@ final class CheckInViewModel: ObservableObject {
         }
     }
 
+    func makeLocalCheckIn(userId: String?) -> CheckIn? {
+        do {
+            errorMessage = nil
+            guard let userId else { throw LongdyError.missingUser }
+            return CheckIn(
+                id: "pending-checkIn-\(UUID().uuidString)",
+                userId: userId,
+                mood: mood,
+                status: status,
+                createdAt: Date(),
+                expiresAt: duration.expiresAt
+            )
+        } catch {
+            errorMessage = error.longdyUserMessage
+            return nil
+        }
+    }
+
+    func persistCheckIn(coupleId: String?, checkIn: CheckIn) async -> CheckIn? {
+        do {
+            errorMessage = nil
+            guard let coupleId else { throw LongdyError.missingCouple }
+            let savedCheckIn = try await repository.saveCheckIn(
+                coupleId: coupleId,
+                userId: checkIn.userId,
+                mood: checkIn.mood,
+                status: checkIn.status,
+                expiresAt: checkIn.expiresAt
+            )
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
+            return savedCheckIn
+        } catch {
+            errorMessage = error.longdyUserMessage
+            return nil
+        }
+    }
 }
 
 enum MoodShareDuration: Int, CaseIterable, Identifiable {

@@ -77,16 +77,55 @@ final class CalendarViewModel: ObservableObject {
         return members.first { $0.id == event.ownerUserId }?.friendlyName ?? "상대 일정"
     }
 
+    func makeLocalEvent(userId: String?, title: String, startAt: Date, endAt: Date, type: EventType, memo: String) -> CoupleEvent? {
+        do {
+            try validateEventInput(title: title, startAt: startAt, endAt: endAt)
+            guard let userId else { throw LongdyError.missingUser }
+            return CoupleEvent(
+                id: "pending-event-\(UUID().uuidString)",
+                ownerUserId: userId,
+                title: title,
+                startAt: startAt,
+                endAt: endAt,
+                type: type,
+                memo: memo
+            )
+        } catch {
+            errorMessage = error.longdyUserMessage
+            return nil
+        }
+    }
+
     func saveEvent(userId: String?, coupleId: String?, title: String, startAt: Date, endAt: Date, type: EventType, memo: String) async -> CoupleEvent? {
         do {
             errorMessage = nil
-            guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LongdyError.invalidInput("일정 제목이 필요해요.") }
-            guard endAt >= startAt else { throw LongdyError.invalidInput("끝 시간이 시작 시간보다 빠를 수 없어요.") }
+            try validateEventInput(title: title, startAt: startAt, endAt: endAt)
             guard let userId else { throw LongdyError.missingUser }
             guard let coupleId else { throw LongdyError.missingCouple }
             let event = try await repository.saveEvent(coupleId: coupleId, ownerUserId: userId, title: title, startAt: startAt, endAt: endAt, type: type, memo: memo)
             CoupleDataRefreshCoordinator.shared.requestRefresh()
             return event
+        } catch {
+            errorMessage = error.longdyUserMessage
+            return nil
+        }
+    }
+
+    func persistEvent(coupleId: String?, event: CoupleEvent) async -> CoupleEvent? {
+        do {
+            errorMessage = nil
+            guard let coupleId else { throw LongdyError.missingCouple }
+            let savedEvent = try await repository.saveEvent(
+                coupleId: coupleId,
+                ownerUserId: event.ownerUserId,
+                title: event.title,
+                startAt: event.startAt,
+                endAt: event.endAt,
+                type: event.type,
+                memo: event.memo
+            )
+            CoupleDataRefreshCoordinator.shared.requestRefresh()
+            return savedEvent
         } catch {
             errorMessage = error.longdyUserMessage
             return nil
@@ -99,8 +138,7 @@ final class CalendarViewModel: ObservableObject {
             guard event.ownerUserId == currentUserId else {
                 throw LongdyError.invalidInput("상대가 등록한 일정은 수정할 수 없어요.")
             }
-            guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LongdyError.invalidInput("일정 제목이 필요해요.") }
-            guard endAt >= startAt else { throw LongdyError.invalidInput("끝 시간이 시작 시간보다 빠를 수 없어요.") }
+            try validateEventInput(title: title, startAt: startAt, endAt: endAt)
             guard let coupleId else { throw LongdyError.missingCouple }
             let updatedEvent = try await repository.updateEvent(coupleId: coupleId, eventId: event.id, title: title, startAt: startAt, endAt: endAt, type: type, memo: memo)
             CoupleDataRefreshCoordinator.shared.requestRefresh()
@@ -124,6 +162,15 @@ final class CalendarViewModel: ObservableObject {
         } catch {
             errorMessage = error.longdyUserMessage
             return false
+        }
+    }
+
+    private func validateEventInput(title: String, startAt: Date, endAt: Date) throws {
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LongdyError.invalidInput("일정 제목이 필요해요.")
+        }
+        guard endAt >= startAt else {
+            throw LongdyError.invalidInput("끝 시간이 시작 시간보다 빠를 수 없어요.")
         }
     }
 }

@@ -109,9 +109,15 @@ struct EventEditorView: View {
                                     dismiss()
                                 }
                             } else {
-                                if let savedEvent = await viewModel.saveEvent(userId: appState.userId, coupleId: appState.coupleId, title: title, startAt: saveStartAt, endAt: saveEndAt, type: type, memo: memo) {
+                                guard let localEvent = viewModel.makeLocalEvent(userId: appState.userId, title: title, startAt: saveStartAt, endAt: saveEndAt, type: type, memo: memo) else { return }
+                                appState.applySavedEvent(localEvent, protectFromRemote: true)
+                                dismiss()
+                                if let savedEvent = await viewModel.persistEvent(coupleId: appState.coupleId, event: localEvent) {
+                                    appState.removeEvent(localEvent)
                                     appState.applySavedEvent(savedEvent)
-                                    dismiss()
+                                } else {
+                                    appState.removeEvent(localEvent)
+                                    appState.errorMessage = viewModel.errorMessage
                                 }
                             }
                         }
@@ -318,4 +324,3 @@ extension View {
         }
     }
 }
-

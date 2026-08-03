@@ -423,15 +423,23 @@ struct HomeView: View {
     }
 
     private func saveMood() {
+        guard let localCheckIn = moodEditor.makeLocalCheckIn(userId: appState.userId) else { return }
+        let previousCheckIn = appState.myLatestCheckIn
+        appState.applySavedCheckIn(localCheckIn, protectFromRemote: true)
         isSavingMood = true
+        showingMoodEditor = false
         Task {
-            if let checkIn = await moodEditor.saveCheckIn(userId: appState.userId, coupleId: appState.coupleId) {
+            if let checkIn = await moodEditor.persistCheckIn(coupleId: appState.coupleId, checkIn: localCheckIn) {
+                appState.removeCheckIn(localCheckIn)
                 appState.applySavedCheckIn(checkIn)
+            } else {
+                appState.removeCheckIn(localCheckIn)
+                if let previousCheckIn {
+                    appState.applySavedCheckIn(previousCheckIn)
+                }
+                appState.errorMessage = moodEditor.errorMessage
             }
             isSavingMood = false
-            if moodEditor.errorMessage == nil {
-                showingMoodEditor = false
-            }
         }
     }
 
