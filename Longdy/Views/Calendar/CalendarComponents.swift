@@ -117,7 +117,7 @@ struct EventEditorView: View {
                                     appState.applySavedEvent(savedEvent)
                                 } else {
                                     appState.removeEvent(localEvent)
-                                    appState.errorMessage = viewModel.errorMessage
+                                    appState.errorMessage = viewModel.errorMessage ?? "일정을 저장하지 못했어요. 다시 시도해 주세요."
                                 }
                             }
                         }

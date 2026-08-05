@@ -437,7 +437,7 @@ struct HomeView: View {
                 if let previousCheckIn {
                     appState.applySavedCheckIn(previousCheckIn)
                 }
-                appState.errorMessage = moodEditor.errorMessage
+                appState.errorMessage = moodEditor.errorMessage ?? "기분 공유를 저장하지 못했어요. 다시 시도해 주세요."
             }
             isSavingMood = false
         }

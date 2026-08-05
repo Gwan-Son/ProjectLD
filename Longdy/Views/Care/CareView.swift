@@ -314,6 +314,7 @@ struct CareView: View {
             let succeeded = await viewModel.toggleCareItem(coupleId: appState.coupleId, item: item)
             if !succeeded {
                 appState.applySavedCareItem(item)
+                appState.errorMessage = viewModel.errorMessage ?? "챙김 상태를 저장하지 못했어요. 다시 시도해 주세요."
             }
         }
     }
@@ -328,6 +329,9 @@ struct CareView: View {
                 item: pendingItem
             )
             appState.applySavedCareItem(savedItem)
+            if savedItem.effectiveSyncState == .failed {
+                appState.errorMessage = viewModel.errorMessage ?? "챙김 항목을 저장하지 못했어요. 다시 시도해 주세요."
+            }
         }
     }
 
@@ -354,6 +358,7 @@ struct CareView: View {
                 var failedItem = item
                 failedItem.syncState = .deleteFailed
                 appState.applySavedCareItem(failedItem)
+                appState.errorMessage = viewModel.errorMessage ?? "챙김 항목을 삭제하지 못했어요. 다시 시도해 주세요."
             }
         }
     }

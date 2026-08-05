@@ -37,6 +37,24 @@ struct ContentView: View {
         } message: {
             Text("이미 만든 공유 초대가 있어요. 상대의 초대를 수락하면 기존 초대는 삭제되고 새 커플 공간으로 연결돼요.")
         }
+        .alert("알림", isPresented: appErrorPresented) {
+            Button("확인", role: .cancel) {
+                appState.errorMessage = nil
+            }
+        } message: {
+            Text(appState.errorMessage ?? "")
+        }
+    }
+
+    private var appErrorPresented: Binding<Bool> {
+        Binding(
+            get: { appState.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    appState.errorMessage = nil
+                }
+            }
+        )
     }
 }
 

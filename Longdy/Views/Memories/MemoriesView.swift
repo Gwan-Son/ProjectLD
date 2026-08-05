@@ -370,6 +370,8 @@ struct MemoriesView: View {
             if savedMemory.effectiveSyncState == .synced {
                 photoSaveAlertMessage = "오늘의 한 장을 업로드했어요."
                 showingPhotoSaveAlert = true
+            } else if savedMemory.effectiveSyncState == .failed {
+                appState.errorMessage = viewModel.errorMessage ?? "오늘의 한 장을 저장하지 못했어요. 다시 시도해 주세요."
             }
         }
     }
@@ -447,6 +449,7 @@ struct MemoriesView: View {
                 failedMemory.syncState = .deleteFailed
                 appState.applySavedMemory(failedMemory)
                 viewModel.applySavedMemory(failedMemory)
+                appState.errorMessage = viewModel.errorMessage ?? "오늘의 한 장을 삭제하지 못했어요. 다시 시도해 주세요."
             }
         }
     }
